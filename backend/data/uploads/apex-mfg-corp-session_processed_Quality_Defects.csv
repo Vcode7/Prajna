@@ -1,0 +1,81 @@
+defect_id,date,product_id,batch_number,defect_type,severity_score,inspection_station,scrap_cost,pass_fail_status,date_year,date_month,date_day_of_week,scrap_cost_group
+DEF-4000,2026-01-01,PRD-104,BATCH-2026-01,Thermal Fatigue,9,QC-Station-4,1375.38,Scrapped,2026,2026-01,Thursday,High
+DEF-4001,2026-01-03,PRD-108,BATCH-2026-02,Thermal Fatigue,9,QC-Station-3,1612.8,Scrapped,2026,2026-01,Saturday,High
+DEF-4002,2026-01-06,PRD-106,BATCH-2026-03,Tolerance Mismatch,9,QC-Station-1,1045.41,Scrapped,2026,2026-01,Tuesday,Medium-High
+DEF-4003,2026-01-08,PRD-108,BATCH-2026-04,Thermal Fatigue,6,QC-Station-3,1323.81,Reworked,2026,2026-01,Thursday,High
+DEF-4004,2026-01-11,PRD-107,BATCH-2026-05,Surface Flaw,1,QC-Station-2,47.81,Passed with Deviation,2026,2026-01,Sunday,Low
+DEF-4005,2026-01-13,PRD-101,BATCH-2026-06,Micro-Crack,5,QC-Station-4,1421.97,Reworked,2026,2026-01,Tuesday,High
+DEF-4006,2026-01-16,PRD-105,BATCH-2026-07,Surface Flaw,3,QC-Station-4,119.05,Passed with Deviation,2026,2026-01,Friday,Low
+DEF-4007,2026-01-18,PRD-104,BATCH-2026-08,Thermal Fatigue,8,QC-Station-3,1563.36,Scrapped,2026,2026-01,Sunday,High
+DEF-4008,2026-01-21,PRD-108,BATCH-2026-09,Thermal Fatigue,8,QC-Station-2,1199.11,Scrapped,2026,2026-01,Wednesday,High
+DEF-4009,2026-01-23,PRD-103,BATCH-2026-10,Micro-Crack,9,QC-Station-1,1174.12,Scrapped,2026,2026-01,Friday,Medium-High
+DEF-4010,2026-01-26,PRD-101,BATCH-2026-11,Dimensional Variance,2,QC-Station-1,780.4,Passed with Deviation,2026,2026-01,Monday,Medium-High
+DEF-4011,2026-01-28,PRD-107,BATCH-2026-12,Surface Flaw,3,QC-Station-1,181.24,Passed with Deviation,2026,2026-01,Wednesday,Low
+DEF-4012,2026-01-31,PRD-103,BATCH-2026-13,Tolerance Mismatch,1,QC-Station-3,94.87,Passed with Deviation,2026,2026-01,Saturday,Low
+DEF-4013,2026-02-02,PRD-101,BATCH-2026-14,Micro-Crack,10,QC-Station-4,3071.87,Scrapped,2026,2026-02,Monday,High
+DEF-4014,2026-02-05,PRD-108,BATCH-2026-15,Micro-Crack,1,QC-Station-4,79.03,Passed with Deviation,2026,2026-02,Thursday,Low
+DEF-4015,2026-02-07,PRD-101,BATCH-2026-01,Thermal Fatigue,1,QC-Station-3,277.94,Passed with Deviation,2026,2026-02,Saturday,Medium-Low
+DEF-4016,2026-02-10,PRD-101,BATCH-2026-02,Tolerance Mismatch,9,QC-Station-2,3190.97,Scrapped,2026,2026-02,Tuesday,High
+DEF-4017,2026-02-12,PRD-102,BATCH-2026-03,Surface Flaw,2,QC-Station-2,221.27,Passed with Deviation,2026,2026-02,Thursday,Low
+DEF-4018,2026-02-15,PRD-105,BATCH-2026-04,Tolerance Mismatch,6,QC-Station-1,262.43,Reworked,2026,2026-02,Sunday,Medium-Low
+DEF-4019,2026-02-17,PRD-106,BATCH-2026-05,Surface Flaw,7,QC-Station-2,563.89,Reworked,2026,2026-02,Tuesday,Medium-High
+DEF-4020,2026-02-20,PRD-105,BATCH-2026-06,Dimensional Variance,2,QC-Station-1,131.53,Passed with Deviation,2026,2026-02,Friday,Low
+DEF-4021,2026-02-22,PRD-107,BATCH-2026-07,Tolerance Mismatch,7,QC-Station-1,276.31,Reworked,2026,2026-02,Sunday,Medium-Low
+DEF-4022,2026-02-25,PRD-101,BATCH-2026-08,Tolerance Mismatch,3,QC-Station-3,471.98,Passed with Deviation,2026,2026-02,Wednesday,Medium-Low
+DEF-4023,2026-02-27,PRD-102,BATCH-2026-09,Surface Flaw,9,QC-Station-2,1379.42,Scrapped,2026,2026-02,Friday,High
+DEF-4024,2026-03-02,PRD-108,BATCH-2026-10,Dimensional Variance,5,QC-Station-3,426.32,Reworked,2026,2026-03,Monday,Medium-Low
+DEF-4025,2026-03-04,PRD-101,BATCH-2026-11,Thermal Fatigue,3,QC-Station-1,1157.3,Passed with Deviation,2026,2026-03,Wednesday,Medium-High
+DEF-4026,2026-03-07,PRD-104,BATCH-2026-12,Tolerance Mismatch,10,QC-Station-1,1198.2,Scrapped,2026,2026-03,Saturday,High
+DEF-4027,2026-03-09,PRD-105,BATCH-2026-13,Micro-Crack,3,QC-Station-4,181.94,Passed with Deviation,2026,2026-03,Monday,Low
+DEF-4028,2026-03-12,PRD-106,BATCH-2026-14,Surface Flaw,7,QC-Station-1,738.3,Reworked,2026,2026-03,Thursday,Medium-High
+DEF-4029,2026-03-14,PRD-106,BATCH-2026-15,Surface Flaw,1,QC-Station-1,50.21,Passed with Deviation,2026,2026-03,Saturday,Low
+DEF-4030,2026-03-17,PRD-106,BATCH-2026-01,Micro-Crack,10,QC-Station-4,1065.96,Scrapped,2026,2026-03,Tuesday,Medium-High
+DEF-4031,2026-03-19,PRD-106,BATCH-2026-02,Tolerance Mismatch,1,QC-Station-4,95.27,Passed with Deviation,2026,2026-03,Thursday,Low
+DEF-4032,2026-03-22,PRD-104,BATCH-2026-03,Tolerance Mismatch,6,QC-Station-4,1175.19,Reworked,2026,2026-03,Sunday,Medium-High
+DEF-4033,2026-03-24,PRD-103,BATCH-2026-04,Dimensional Variance,10,QC-Station-3,1532.09,Scrapped,2026,2026-03,Tuesday,High
+DEF-4034,2026-03-27,PRD-104,BATCH-2026-05,Surface Flaw,2,QC-Station-4,216.52,Passed with Deviation,2026,2026-03,Friday,Low
+DEF-4035,2026-03-29,PRD-103,BATCH-2026-06,Dimensional Variance,7,QC-Station-1,754.61,Reworked,2026,2026-03,Sunday,Medium-High
+DEF-4036,2026-04-01,PRD-101,BATCH-2026-07,Thermal Fatigue,5,QC-Station-1,1275.39,Reworked,2026,2026-04,Wednesday,High
+DEF-4037,2026-04-03,PRD-103,BATCH-2026-08,Tolerance Mismatch,2,QC-Station-4,181.47,Passed with Deviation,2026,2026-04,Friday,Low
+DEF-4038,2026-04-06,PRD-102,BATCH-2026-09,Micro-Crack,1,QC-Station-1,63.68,Passed with Deviation,2026,2026-04,Monday,Low
+DEF-4039,2026-04-08,PRD-106,BATCH-2026-10,Tolerance Mismatch,7,QC-Station-4,301.26,Reworked,2026,2026-04,Wednesday,Medium-Low
+DEF-4040,2026-04-11,PRD-102,BATCH-2026-11,Surface Flaw,9,QC-Station-2,1365.86,Scrapped,2026,2026-04,Saturday,High
+DEF-4041,2026-04-13,PRD-107,BATCH-2026-12,Thermal Fatigue,3,QC-Station-3,86.24,Passed with Deviation,2026,2026-04,Monday,Low
+DEF-4042,2026-04-16,PRD-108,BATCH-2026-13,Tolerance Mismatch,3,QC-Station-3,263.61,Passed with Deviation,2026,2026-04,Thursday,Medium-Low
+DEF-4043,2026-04-18,PRD-107,BATCH-2026-14,Dimensional Variance,5,QC-Station-3,221.45,Reworked,2026,2026-04,Saturday,Low
+DEF-4044,2026-04-21,PRD-105,BATCH-2026-15,Tolerance Mismatch,4,QC-Station-2,278.37,Reworked,2026,2026-04,Tuesday,Medium-Low
+DEF-4045,2026-04-23,PRD-108,BATCH-2026-01,Dimensional Variance,2,QC-Station-4,198.27,Passed with Deviation,2026,2026-04,Thursday,Low
+DEF-4046,2026-04-26,PRD-106,BATCH-2026-02,Thermal Fatigue,10,QC-Station-4,739.11,Scrapped,2026,2026-04,Sunday,Medium-High
+DEF-4047,2026-04-28,PRD-106,BATCH-2026-03,Micro-Crack,7,QC-Station-2,773.5,Reworked,2026,2026-04,Tuesday,Medium-High
+DEF-4048,2026-05-01,PRD-105,BATCH-2026-04,Surface Flaw,6,QC-Station-4,377.3,Reworked,2026,2026-05,Friday,Medium-Low
+DEF-4049,2026-05-03,PRD-106,BATCH-2026-05,Thermal Fatigue,3,QC-Station-3,369.07,Passed with Deviation,2026,2026-05,Sunday,Medium-Low
+DEF-4050,2026-05-06,PRD-108,BATCH-2026-06,Thermal Fatigue,10,QC-Station-4,1999.88,Scrapped,2026,2026-05,Wednesday,High
+DEF-4051,2026-05-08,PRD-105,BATCH-2026-07,Micro-Crack,7,QC-Station-2,345.14,Reworked,2026,2026-05,Friday,Medium-Low
+DEF-4052,2026-05-11,PRD-103,BATCH-2026-08,Tolerance Mismatch,9,QC-Station-2,625.98,Scrapped,2026,2026-05,Monday,Medium-High
+DEF-4053,2026-05-13,PRD-108,BATCH-2026-09,Dimensional Variance,5,QC-Station-4,1038.4,Reworked,2026,2026-05,Wednesday,Medium-High
+DEF-4054,2026-05-16,PRD-108,BATCH-2026-10,Surface Flaw,3,QC-Station-3,530.4,Passed with Deviation,2026,2026-05,Saturday,Medium-High
+DEF-4055,2026-05-18,PRD-103,BATCH-2026-11,Dimensional Variance,7,QC-Station-4,1191.11,Reworked,2026,2026-05,Monday,High
+DEF-4056,2026-05-21,PRD-108,BATCH-2026-12,Micro-Crack,10,QC-Station-4,1405.26,Scrapped,2026,2026-05,Thursday,High
+DEF-4057,2026-05-23,PRD-101,BATCH-2026-13,Micro-Crack,6,QC-Station-1,1946.65,Reworked,2026,2026-05,Saturday,High
+DEF-4058,2026-05-26,PRD-102,BATCH-2026-14,Thermal Fatigue,4,QC-Station-2,500.08,Reworked,2026,2026-05,Tuesday,Medium-Low
+DEF-4059,2026-05-28,PRD-101,BATCH-2026-15,Tolerance Mismatch,10,QC-Station-3,4005.74,Scrapped,2026,2026-05,Thursday,High
+DEF-4060,2026-05-31,PRD-107,BATCH-2026-01,Thermal Fatigue,2,QC-Station-2,45.95,Passed with Deviation,2026,2026-05,Sunday,Low
+DEF-4061,2026-06-02,PRD-104,BATCH-2026-02,Tolerance Mismatch,8,QC-Station-2,1300.69,Scrapped,2026,2026-06,Tuesday,High
+DEF-4062,2026-06-05,PRD-106,BATCH-2026-03,Thermal Fatigue,1,QC-Station-4,82.55,Passed with Deviation,2026,2026-06,Friday,Low
+DEF-4063,2026-06-07,PRD-102,BATCH-2026-04,Surface Flaw,2,QC-Station-3,287.56,Passed with Deviation,2026,2026-06,Sunday,Medium-Low
+DEF-4064,2026-06-10,PRD-105,BATCH-2026-05,Surface Flaw,6,QC-Station-4,326.72,Reworked,2026,2026-06,Wednesday,Medium-Low
+DEF-4065,2026-06-12,PRD-106,BATCH-2026-06,Tolerance Mismatch,8,QC-Station-3,401.6,Scrapped,2026,2026-06,Friday,Medium-Low
+DEF-4066,2026-06-15,PRD-102,BATCH-2026-07,Dimensional Variance,5,QC-Station-1,294.13,Reworked,2026,2026-06,Monday,Medium-Low
+DEF-4067,2026-06-17,PRD-106,BATCH-2026-08,Surface Flaw,2,QC-Station-2,197.76,Passed with Deviation,2026,2026-06,Wednesday,Low
+DEF-4068,2026-06-20,PRD-103,BATCH-2026-09,Micro-Crack,9,QC-Station-4,784.24,Scrapped,2026,2026-06,Saturday,Medium-High
+DEF-4069,2026-06-22,PRD-108,BATCH-2026-10,Surface Flaw,4,QC-Station-2,809.8,Reworked,2026,2026-06,Monday,Medium-High
+DEF-4070,2026-06-25,PRD-107,BATCH-2026-11,Micro-Crack,7,QC-Station-2,166.7,Reworked,2026,2026-06,Thursday,Low
+DEF-4071,2026-06-27,PRD-108,BATCH-2026-12,Dimensional Variance,10,QC-Station-2,1450.1,Scrapped,2026,2026-06,Saturday,High
+DEF-4072,2026-06-30,PRD-104,BATCH-2026-13,Dimensional Variance,5,QC-Station-1,1164.66,Reworked,2026,2026-06,Tuesday,Medium-High
+DEF-4073,2026-07-02,PRD-103,BATCH-2026-14,Tolerance Mismatch,6,QC-Station-1,654.18,Reworked,2026,2026-07,Thursday,Medium-High
+DEF-4074,2026-07-05,PRD-105,BATCH-2026-15,Thermal Fatigue,8,QC-Station-4,468.64,Scrapped,2026,2026-07,Sunday,Medium-Low
+DEF-4075,2026-07-07,PRD-107,BATCH-2026-01,Thermal Fatigue,10,QC-Station-4,276.4,Scrapped,2026,2026-07,Tuesday,Medium-Low
+DEF-4076,2026-07-10,PRD-103,BATCH-2026-02,Micro-Crack,5,QC-Station-1,936.33,Reworked,2026,2026-07,Friday,Medium-High
+DEF-4077,2026-07-12,PRD-103,BATCH-2026-03,Thermal Fatigue,6,QC-Station-1,489.35,Reworked,2026,2026-07,Sunday,Medium-Low
+DEF-4078,2026-07-15,PRD-103,BATCH-2026-04,Micro-Crack,6,QC-Station-4,945.2,Reworked,2026,2026-07,Wednesday,Medium-High
+DEF-4079,2026-07-17,PRD-107,BATCH-2026-05,Tolerance Mismatch,10,QC-Station-4,287.04,Scrapped,2026,2026-07,Friday,Medium-Low

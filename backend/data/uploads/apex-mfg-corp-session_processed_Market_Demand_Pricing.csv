@@ -1,0 +1,101 @@
+demand_id,date,product_id,region,units_demanded,unit_price,competitor_price,discount_pct,gross_margin_pct,market_sentiment_index,revenue,date_year,date_month,date_day_of_week,units_demanded_group,unit_price_group,competitor_price_group,gross_margin_pct_group,market_sentiment_index_group,revenue_group
+DMD-3000,2026-01-01,PRD-102,North America,233,344.52,337.8,10.0,41.9,74.5,72246.31,2026,2026-01,Thursday,Medium-High,Medium-High,Medium-Low,Low,Medium-Low,Medium-High
+DMD-3001,2026-01-03,PRD-108,North America,147,491.97,484.18,5.0,44.4,73.4,68703.39,2026,2026-01,Saturday,Low,Medium-High,Medium-High,Low,Medium-Low,Medium-Low
+DMD-3002,2026-01-05,PRD-102,Asia-Pacific,283,336.01,346.97,0.0,46.4,66.3,95090.83,2026,2026-01,Monday,High,Medium-Low,Medium-High,Medium-Low,Low,Medium-High
+DMD-3003,2026-01-07,PRD-106,Latin America,307,294.77,307.71,2.5,51.3,93.4,88231.8,2026,2026-01,Wednesday,High,Medium-Low,Medium-Low,Medium-High,High,Medium-High
+DMD-3004,2026-01-09,PRD-108,Latin America,271,534.79,558.11,0.0,51.4,63.2,144928.09,2026,2026-01,Friday,High,High,High,High,Low,High
+DMD-3005,2026-01-11,PRD-104,Asia-Pacific,154,577.14,552.86,0.0,46.3,78.5,88879.56,2026,2026-01,Sunday,Medium-Low,High,High,Medium-Low,Medium-High,Medium-High
+DMD-3006,2026-01-13,PRD-108,Asia-Pacific,160,507.24,525.23,2.5,47.4,89.6,79129.6,2026,2026-01,Tuesday,Medium-Low,Medium-High,Medium-High,Medium-Low,High,Medium-High
+DMD-3007,2026-01-15,PRD-101,Asia-Pacific,278,902.03,880.8,0.0,50.1,76.0,250764.34,2026,2026-01,Thursday,High,High,High,Medium-High,Medium-Low,High
+DMD-3008,2026-01-17,PRD-107,Europe,182,172.27,181.79,7.5,52.9,77.9,29001.7,2026,2026-01,Saturday,Medium-Low,Low,Low,High,Medium-Low,Low
+DMD-3009,2026-01-19,PRD-108,North America,305,515.54,537.0,5.0,46.9,85.3,149376.8,2026,2026-01,Monday,High,Medium-High,High,Medium-Low,Medium-High,High
+DMD-3010,2026-01-21,PRD-102,Asia-Pacific,234,340.1,363.67,2.5,45.7,72.3,77594.4,2026,2026-01,Wednesday,Medium-High,Medium-Low,Medium-High,Low,Medium-Low,Medium-High
+DMD-3011,2026-01-23,PRD-102,Latin America,242,335.21,325.62,7.5,41.9,67.3,75036.94,2026,2026-01,Friday,Medium-High,Medium-Low,Medium-Low,Low,Low,Medium-High
+DMD-3012,2026-01-25,PRD-108,Latin America,234,514.39,481.43,5.0,46.8,70.8,114348.78,2026,2026-01,Sunday,Medium-High,Medium-High,Medium-High,Medium-Low,Low,High
+DMD-3013,2026-01-27,PRD-101,Europe,222,807.93,823.48,5.0,41.4,92.5,170391.66,2026,2026-01,Tuesday,Medium-High,High,High,Low,High,High
+DMD-3014,2026-01-29,PRD-103,Europe,94,444.7,455.79,7.5,46.5,64.2,38666.9,2026,2026-01,Thursday,Low,Medium-High,Medium-High,Medium-Low,Low,Low
+DMD-3015,2026-01-31,PRD-106,Europe,245,287.3,305.38,0.0,51.3,83.7,70388.5,2026,2026-01,Saturday,Medium-High,Medium-Low,Medium-Low,Medium-High,Medium-High,Medium-Low
+DMD-3016,2026-02-02,PRD-106,Asia-Pacific,127,287.7,298.3,10.0,45.9,74.7,32884.11,2026,2026-02,Monday,Low,Medium-Low,Medium-Low,Medium-Low,Medium-Low,Low
+DMD-3017,2026-02-04,PRD-105,Latin America,201,204.74,193.66,2.5,52.4,91.2,40123.62,2026,2026-02,Wednesday,Medium-Low,Low,Low,High,High,Low
+DMD-3018,2026-02-06,PRD-102,Asia-Pacific,138,332.06,320.92,7.5,41.4,84.2,42388.08,2026,2026-02,Friday,Low,Medium-Low,Medium-Low,Low,Medium-High,Medium-Low
+DMD-3019,2026-02-08,PRD-108,Europe,186,503.37,477.7,0.0,48.3,90.8,93626.82,2026,2026-02,Sunday,Medium-Low,Medium-High,Medium-High,Medium-High,High,Medium-High
+DMD-3020,2026-02-10,PRD-108,Asia-Pacific,267,561.4,585.81,5.0,51.2,84.7,142399.11,2026,2026-02,Tuesday,High,High,High,Medium-High,Medium-High,High
+DMD-3021,2026-02-12,PRD-105,Asia-Pacific,299,223.61,234.61,2.5,56.4,78.3,65187.98,2026,2026-02,Thursday,High,Low,Low,High,Medium-High,Medium-Low
+DMD-3022,2026-02-14,PRD-102,Latin America,296,366.49,381.48,2.5,49.6,62.8,105769.68,2026,2026-02,Saturday,High,Medium-High,Medium-High,Medium-High,Low,Medium-High
+DMD-3023,2026-02-16,PRD-106,North America,252,291.58,311.3,2.5,50.8,64.1,71641.08,2026,2026-02,Monday,Medium-High,Medium-Low,Medium-Low,Medium-High,Low,Medium-Low
+DMD-3024,2026-02-18,PRD-107,Latin America,203,178.19,183.65,10.0,53.2,88.3,32555.11,2026,2026-02,Wednesday,Medium-High,Low,Low,High,High,Low
+DMD-3025,2026-02-20,PRD-102,Latin America,190,325.57,317.23,0.0,44.7,83.8,61858.3,2026,2026-02,Friday,Medium-Low,Medium-Low,Medium-Low,Low,Medium-High,Medium-Low
+DMD-3026,2026-02-22,PRD-106,Europe,270,277.81,290.61,10.0,44.0,86.6,67508.1,2026,2026-02,Sunday,High,Low,Low,Low,High,Medium-Low
+DMD-3027,2026-02-24,PRD-103,North America,304,420.24,444.4,0.0,47.6,78.6,127752.96,2026,2026-02,Tuesday,High,Medium-High,Medium-High,Medium-Low,Medium-High,High
+DMD-3028,2026-02-26,PRD-105,Asia-Pacific,168,202.24,197.22,2.5,51.8,89.1,33126.24,2026,2026-02,Thursday,Medium-Low,Low,Low,High,High,Low
+DMD-3029,2026-02-28,PRD-105,Asia-Pacific,121,203.17,216.15,5.0,50.8,81.7,23354.21,2026,2026-02,Saturday,Low,Low,Low,Medium-High,Medium-High,Low
+DMD-3030,2026-03-02,PRD-102,Europe,124,343.52,327.58,10.0,41.8,83.1,38337.08,2026,2026-03,Monday,Low,Medium-Low,Medium-Low,Low,Medium-High,Low
+DMD-3031,2026-03-04,PRD-106,North America,100,306.81,309.54,0.0,54.4,92.4,30681.0,2026,2026-03,Wednesday,Low,Medium-Low,Medium-Low,High,High,Low
+DMD-3032,2026-03-06,PRD-105,North America,258,216.54,224.63,7.5,52.6,77.9,51677.4,2026,2026-03,Friday,Medium-High,Low,Low,High,Medium-Low,Medium-Low
+DMD-3033,2026-03-08,PRD-105,Latin America,285,216.27,210.28,2.5,54.9,71.5,60095.1,2026,2026-03,Sunday,High,Low,Low,High,Medium-Low,Medium-Low
+DMD-3034,2026-03-10,PRD-102,Latin America,207,352.38,335.51,7.5,44.8,68.5,67471.65,2026,2026-03,Tuesday,Medium-High,Medium-High,Medium-Low,Low,Low,Medium-Low
+DMD-3035,2026-03-12,PRD-103,Europe,193,413.18,425.81,5.0,44.0,86.3,75756.36,2026,2026-03,Thursday,Medium-Low,Medium-High,Medium-High,Low,High,Medium-High
+DMD-3036,2026-03-14,PRD-102,Europe,202,334.79,333.22,5.0,43.4,66.5,64246.1,2026,2026-03,Saturday,Medium-Low,Medium-Low,Medium-Low,Low,Low,Medium-Low
+DMD-3037,2026-03-16,PRD-101,Europe,199,833.54,820.02,10.0,40.0,92.8,149287.81,2026,2026-03,Monday,Medium-Low,High,High,Low,High,High
+DMD-3038,2026-03-18,PRD-103,Europe,138,442.63,469.51,5.0,47.7,77.9,58029.0,2026,2026-03,Wednesday,Low,Medium-High,Medium-High,Medium-Low,Medium-Low,Medium-Low
+DMD-3039,2026-03-20,PRD-108,Latin America,100,525.11,511.03,0.0,50.5,78.2,52511.0,2026,2026-03,Friday,Low,High,Medium-High,Medium-High,Medium-Low,Medium-Low
+DMD-3040,2026-03-22,PRD-104,Latin America,149,591.77,579.58,0.0,47.6,81.1,88173.73,2026,2026-03,Sunday,Low,High,High,Medium-Low,Medium-High,Medium-High
+DMD-3041,2026-03-24,PRD-108,Europe,178,509.6,474.51,0.0,49.0,90.2,90708.8,2026,2026-03,Tuesday,Medium-Low,Medium-High,Medium-High,Medium-High,High,Medium-High
+DMD-3042,2026-03-26,PRD-106,Europe,97,303.61,297.91,7.5,50.1,73.6,27241.48,2026,2026-03,Thursday,Low,Medium-Low,Medium-Low,Medium-High,Medium-Low,Low
+DMD-3043,2026-03-28,PRD-105,North America,163,199.56,199.68,10.0,47.1,66.1,29274.8,2026,2026-03,Saturday,Medium-Low,Low,Low,Medium-Low,Low,Low
+DMD-3044,2026-03-30,PRD-102,Asia-Pacific,237,338.35,352.32,5.0,44.0,86.2,76178.91,2026,2026-03,Monday,Medium-High,Medium-Low,Medium-High,Low,High,Medium-High
+DMD-3045,2026-04-01,PRD-104,North America,89,624.85,616.22,0.0,50.4,66.4,55611.65,2026,2026-04,Wednesday,Low,High,High,Medium-High,Low,Medium-Low
+DMD-3046,2026-04-03,PRD-106,Europe,240,305.24,306.07,2.5,53.0,72.5,71426.4,2026,2026-04,Friday,Medium-High,Medium-Low,Medium-Low,High,Medium-Low,Medium-Low
+DMD-3047,2026-04-05,PRD-106,Asia-Pacific,251,279.2,298.38,5.0,47.2,78.2,66575.24,2026,2026-04,Sunday,Medium-High,Medium-Low,Medium-Low,Medium-Low,Medium-Low,Medium-Low
+DMD-3048,2026-04-07,PRD-108,Asia-Pacific,169,540.4,525.25,0.0,51.9,83.6,91327.6,2026,2026-04,Tuesday,Medium-Low,High,Medium-High,High,Medium-High,Medium-High
+DMD-3049,2026-04-09,PRD-107,Latin America,239,168.58,175.58,0.0,55.5,70.5,40290.62,2026,2026-04,Thursday,Medium-High,Low,Low,High,Low,Medium-Low
+DMD-3050,2026-04-11,PRD-104,Latin America,220,635.01,642.44,2.5,49.9,66.7,136208.6,2026,2026-04,Saturday,Medium-High,High,High,Medium-High,Low,High
+DMD-3051,2026-04-13,PRD-104,North America,134,576.1,612.25,0.0,46.2,76.1,77197.4,2026,2026-04,Monday,Low,High,High,Medium-Low,Medium-Low,Medium-High
+DMD-3052,2026-04-15,PRD-107,Latin America,224,158.6,162.83,7.5,48.9,89.9,32863.04,2026,2026-04,Wednesday,Medium-High,Low,Low,Medium-High,High,Low
+DMD-3053,2026-04-17,PRD-101,Latin America,176,882.99,885.3,10.0,43.4,78.8,139865.44,2026,2026-04,Friday,Medium-Low,High,High,Low,Medium-High,High
+DMD-3054,2026-04-19,PRD-106,Asia-Pacific,179,311.44,309.68,10.0,50.1,83.6,50173.7,2026,2026-04,Sunday,Medium-Low,Medium-Low,Medium-Low,Medium-High,Medium-High,Medium-Low
+DMD-3055,2026-04-21,PRD-105,Asia-Pacific,148,215.34,206.06,2.5,54.8,69.2,31074.08,2026,2026-04,Tuesday,Low,Low,Low,High,Low,Low
+DMD-3056,2026-04-23,PRD-105,Latin America,173,220.07,226.38,7.5,53.3,73.2,35215.88,2026,2026-04,Thursday,Medium-Low,Low,Low,High,Medium-Low,Low
+DMD-3057,2026-04-25,PRD-105,Latin America,192,205.86,207.98,10.0,48.7,88.2,35571.84,2026,2026-04,Saturday,Medium-Low,Low,Low,Medium-High,High,Low
+DMD-3058,2026-04-27,PRD-103,Latin America,163,411.88,399.63,0.0,46.6,83.0,67136.44,2026,2026-04,Monday,Medium-Low,Medium-High,Medium-High,Medium-Low,Medium-High,Medium-Low
+DMD-3059,2026-04-29,PRD-108,Asia-Pacific,341,504.38,527.54,5.0,45.7,66.4,163393.56,2026,2026-04,Wednesday,High,Medium-High,High,Low,Low,High
+DMD-3060,2026-05-01,PRD-104,Europe,150,594.11,608.24,10.0,42.0,63.7,80205.0,2026,2026-05,Friday,Low,High,High,Low,Low,Medium-High
+DMD-3061,2026-05-03,PRD-107,Europe,82,162.73,162.1,2.5,52.7,75.0,13010.12,2026,2026-05,Sunday,Low,Low,Low,High,Medium-Low,Low
+DMD-3062,2026-05-05,PRD-108,Asia-Pacific,163,523.56,501.53,5.0,47.7,82.7,81072.94,2026,2026-05,Tuesday,Medium-Low,Medium-High,Medium-High,Medium-Low,Medium-High,Medium-High
+DMD-3063,2026-05-07,PRD-102,Europe,303,350.65,337.5,0.0,48.7,75.4,106246.95,2026,2026-05,Thursday,High,Medium-High,Medium-Low,Medium-High,Medium-Low,High
+DMD-3064,2026-05-09,PRD-103,Latin America,283,449.71,420.52,7.5,47.1,68.0,117722.34,2026,2026-05,Saturday,High,Medium-High,Medium-High,Medium-Low,Low,High
+DMD-3065,2026-05-11,PRD-105,North America,240,223.18,207.85,10.0,52.7,91.7,48206.4,2026,2026-05,Monday,Medium-High,Low,Low,High,High,Medium-Low
+DMD-3066,2026-05-13,PRD-106,Latin America,240,284.15,303.61,10.0,45.3,90.5,61375.2,2026,2026-05,Wednesday,Medium-High,Medium-Low,Medium-Low,Low,High,Medium-Low
+DMD-3067,2026-05-15,PRD-103,North America,291,444.84,442.85,2.5,49.3,72.6,126212.52,2026,2026-05,Friday,High,Medium-High,Medium-High,Medium-High,Medium-Low,High
+DMD-3068,2026-05-17,PRD-108,Asia-Pacific,274,536.0,552.4,0.0,51.5,87.3,146864.0,2026,2026-05,Sunday,High,High,High,High,High,High
+DMD-3069,2026-05-19,PRD-104,Latin America,318,588.39,617.73,7.5,43.0,78.5,173074.68,2026,2026-05,Tuesday,High,High,High,Low,Medium-High,High
+DMD-3070,2026-05-21,PRD-102,Asia-Pacific,196,338.68,319.5,2.5,45.5,91.9,64721.16,2026,2026-05,Thursday,Medium-Low,Medium-Low,Medium-Low,Low,High,Medium-Low
+DMD-3071,2026-05-23,PRD-101,Asia-Pacific,165,830.03,799.3,5.0,42.9,80.6,130107.45,2026,2026-05,Saturday,Medium-Low,High,High,Low,Medium-High,High
+DMD-3072,2026-05-25,PRD-101,North America,95,830.12,813.8,2.5,44.4,76.9,76890.15,2026,2026-05,Monday,Low,High,High,Low,Medium-Low,Medium-High
+DMD-3073,2026-05-27,PRD-103,North America,266,418.64,418.79,5.0,44.7,82.4,105790.86,2026,2026-05,Wednesday,High,Medium-High,Medium-High,Low,Medium-High,High
+DMD-3074,2026-05-29,PRD-105,Europe,199,208.21,200.07,2.5,53.2,76.6,40397.0,2026,2026-05,Friday,Medium-Low,Low,Low,High,Medium-Low,Medium-Low
+DMD-3075,2026-05-31,PRD-106,Europe,290,289.48,291.48,7.5,47.7,86.4,77653.3,2026,2026-05,Sunday,High,Medium-Low,Medium-Low,Medium-Low,High,Medium-High
+DMD-3076,2026-06-02,PRD-102,North America,103,344.61,345.97,5.0,45.0,64.0,33720.14,2026,2026-06,Tuesday,Low,Medium-High,Medium-High,Low,Low,Low
+DMD-3077,2026-06-04,PRD-104,Latin America,298,622.31,591.8,5.0,47.6,65.7,176174.62,2026,2026-06,Thursday,High,High,High,Medium-Low,Low,High
+DMD-3078,2026-06-06,PRD-104,North America,209,634.62,633.63,10.0,45.7,76.5,119372.44,2026,2026-06,Saturday,Medium-High,High,High,Low,Medium-Low,High
+DMD-3079,2026-06-08,PRD-107,Asia-Pacific,254,165.65,155.39,7.5,51.1,85.1,38920.42,2026,2026-06,Monday,Medium-High,Low,Low,Medium-High,Medium-High,Low
+DMD-3080,2026-06-10,PRD-107,North America,219,160.98,149.78,2.5,52.2,63.4,34374.24,2026,2026-06,Wednesday,Medium-High,Low,Low,High,Low,Low
+DMD-3081,2026-06-12,PRD-106,North America,320,301.04,302.77,0.0,53.5,93.6,96332.8,2026,2026-06,Friday,High,Medium-Low,Medium-Low,High,High,Medium-High
+DMD-3082,2026-06-14,PRD-108,Latin America,278,491.11,484.84,2.5,45.7,74.0,133114.74,2026,2026-06,Sunday,High,Medium-High,Medium-High,Low,Medium-Low,High
+DMD-3083,2026-06-16,PRD-107,North America,193,165.46,175.12,7.5,51.0,83.8,29538.65,2026,2026-06,Tuesday,Medium-Low,Low,Low,Medium-High,Medium-High,Low
+DMD-3084,2026-06-18,PRD-103,Latin America,217,433.23,424.0,2.5,47.9,78.9,91660.8,2026,2026-06,Thursday,Medium-High,Medium-High,Medium-High,Medium-Low,Medium-High,Medium-High
+DMD-3085,2026-06-20,PRD-104,Latin America,211,644.69,667.81,5.0,49.4,79.0,129229.06,2026,2026-06,Saturday,Medium-High,High,High,Medium-High,Medium-High,High
+DMD-3086,2026-06-22,PRD-104,North America,130,594.54,581.74,5.0,45.1,63.0,73425.3,2026,2026-06,Monday,Low,High,High,Low,Low,Medium-High
+DMD-3087,2026-06-24,PRD-107,Europe,147,169.3,179.64,0.0,55.7,64.2,24887.1,2026,2026-06,Wednesday,Low,Low,Low,High,Low,Low
+DMD-3088,2026-06-26,PRD-101,North America,144,852.13,872.65,0.0,47.2,74.9,122706.72,2026,2026-06,Friday,Low,High,High,Medium-Low,Medium-Low,High
+DMD-3089,2026-06-28,PRD-104,Asia-Pacific,118,619.5,641.56,0.0,50.0,69.5,73101.0,2026,2026-06,Sunday,Low,High,High,Medium-High,Low,Medium-High
+DMD-3090,2026-06-30,PRD-106,Asia-Pacific,149,296.05,307.35,5.0,50.2,90.0,41906.25,2026,2026-06,Tuesday,Low,Medium-Low,Medium-Low,Medium-High,High,Medium-Low
+DMD-3091,2026-07-02,PRD-104,Europe,244,608.72,589.56,10.0,43.4,82.0,133675.4,2026,2026-07,Thursday,Medium-High,High,High,Low,Medium-High,High
+DMD-3092,2026-07-04,PRD-107,Latin America,241,167.94,157.29,5.0,53.0,87.1,38449.14,2026,2026-07,Saturday,Medium-High,Low,Low,High,High,Low
+DMD-3093,2026-07-06,PRD-106,Europe,181,300.87,297.01,5.0,51.0,86.1,51735.23,2026,2026-07,Monday,Medium-Low,Medium-Low,Medium-Low,Medium-High,Medium-High,Medium-Low
+DMD-3094,2026-07-08,PRD-108,Latin America,282,506.34,486.87,2.5,47.3,91.3,139217.76,2026,2026-07,Wednesday,High,Medium-High,Medium-High,Medium-Low,High,High
+DMD-3095,2026-07-10,PRD-107,Europe,183,177.46,178.88,2.5,56.7,70.2,31662.66,2026,2026-07,Friday,Medium-Low,Low,Low,High,Low,Low
+DMD-3096,2026-07-12,PRD-106,Europe,111,298.86,316.53,5.0,50.7,63.6,31515.12,2026,2026-07,Sunday,Low,Medium-Low,Medium-Low,Medium-High,Low,Low
+DMD-3097,2026-07-14,PRD-107,Europe,129,170.66,173.12,0.0,56.1,77.3,22015.14,2026,2026-07,Tuesday,Low,Low,Low,High,Medium-Low,Low
+DMD-3098,2026-07-16,PRD-106,Europe,338,284.91,301.22,2.5,49.6,92.8,93893.02,2026,2026-07,Thursday,High,Medium-Low,Medium-Low,Medium-High,High,Medium-High
+DMD-3099,2026-07-18,PRD-102,Europe,270,355.15,367.8,2.5,48.0,74.7,93492.9,2026,2026-07,Saturday,High,Medium-High,Medium-High,Medium-Low,Medium-Low,Medium-High

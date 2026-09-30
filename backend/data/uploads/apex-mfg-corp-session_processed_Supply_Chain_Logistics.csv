@@ -1,0 +1,101 @@
+supply_id,date,product_id,supplier_id,supplier_name,raw_material_cost,lead_time_days,stock_on_hand,reorder_level,safety_stock,supply_capacity,delivery_status,supplier_reliability_score,date_year,date_month,date_day_of_week,raw_material_cost_group,stock_on_hand_group,reorder_level_group,safety_stock_group,supply_capacity_group
+SUPP-2000,2026-01-01,PRD-105,SUP-06,Pacific Sensors & Optics,47.69,18,754,255,102,2421,Expedited,93.0,2026,2026-01,Thursday,Low,Medium-Low,Low,Low,Medium-High
+SUPP-2001,2026-01-03,PRD-105,SUP-01,Apex Titanium & Alloys,44.51,10,250,483,193,2834,On-Time,96.5,2026,2026-01,Saturday,Low,Low,High,High,High
+SUPP-2002,2026-01-05,PRD-105,SUP-02,Nordic Precision Steels,44.77,17,871,306,122,1826,Expedited,94.2,2026,2026-01,Monday,Low,Medium-High,Low,Low,Medium-Low
+SUPP-2003,2026-01-07,PRD-103,SUP-06,Pacific Sensors & Optics,103.5,15,348,481,192,961,On-Time,93.0,2026,2026-01,Wednesday,Medium-High,Low,High,High,Low
+SUPP-2004,2026-01-09,PRD-105,SUP-04,Rheinland MicroElectronics,42.45,9,218,398,159,1338,On-Time,89.4,2026,2026-01,Friday,Low,Low,Medium-High,Medium-High,Low
+SUPP-2005,2026-01-11,PRD-102,SUP-03,Nippon Advanced Composites,81.25,13,819,441,176,1622,On-Time,98.1,2026,2026-01,Sunday,Medium-Low,Medium-High,High,High,Medium-Low
+SUPP-2006,2026-01-13,PRD-103,SUP-05,Continental Polymers & Resins,101.02,17,899,385,154,1916,Expedited,91.8,2026,2026-01,Tuesday,Medium-High,Medium-High,Medium-High,Medium-High,Medium-Low
+SUPP-2007,2026-01-15,PRD-103,SUP-03,Nippon Advanced Composites,107.05,17,1136,497,198,2187,Expedited,98.1,2026,2026-01,Thursday,Medium-High,High,High,High,Medium-High
+SUPP-2008,2026-01-17,PRD-102,SUP-04,Rheinland MicroElectronics,86.74,19,304,286,114,1724,Expedited,89.4,2026,2026-01,Saturday,Medium-High,Low,Low,Low,Medium-Low
+SUPP-2009,2026-01-19,PRD-107,SUP-05,Continental Polymers & Resins,36.39,15,899,273,109,857,On-Time,91.8,2026,2026-01,Monday,Low,Medium-High,Low,Low,Low
+SUPP-2010,2026-01-21,PRD-105,SUP-05,Continental Polymers & Resins,42.48,27,403,366,146,1873,Delayed,91.8,2026,2026-01,Wednesday,Low,Low,Medium-High,Medium-Low,Medium-Low
+SUPP-2011,2026-01-23,PRD-107,SUP-06,Pacific Sensors & Optics,35.61,10,910,277,110,2731,On-Time,93.0,2026,2026-01,Friday,Low,Medium-High,Low,Low,High
+SUPP-2012,2026-01-25,PRD-101,SUP-05,Continental Polymers & Resins,211.01,12,821,484,193,1058,On-Time,91.8,2026,2026-01,Sunday,High,Medium-High,High,High,Low
+SUPP-2013,2026-01-27,PRD-108,SUP-06,Pacific Sensors & Optics,117.19,13,768,416,166,1372,On-Time,93.0,2026,2026-01,Tuesday,Medium-High,Medium-Low,Medium-High,Medium-High,Low
+SUPP-2014,2026-01-29,PRD-101,SUP-01,Apex Titanium & Alloys,191.0,8,773,376,150,1761,On-Time,96.5,2026,2026-01,Thursday,High,Medium-High,Medium-High,Medium-High,Medium-Low
+SUPP-2015,2026-01-31,PRD-103,SUP-04,Rheinland MicroElectronics,104.36,18,1079,344,137,2516,Expedited,89.4,2026,2026-01,Saturday,Medium-High,High,Medium-Low,Medium-Low,Medium-High
+SUPP-2016,2026-02-02,PRD-103,SUP-04,Rheinland MicroElectronics,100.77,17,352,463,185,2471,Expedited,89.4,2026,2026-02,Monday,Medium-High,Low,High,High,Medium-High
+SUPP-2017,2026-02-04,PRD-105,SUP-01,Apex Titanium & Alloys,43.12,14,908,305,122,1767,On-Time,96.5,2026,2026-02,Wednesday,Low,Medium-High,Low,Low,Medium-Low
+SUPP-2018,2026-02-06,PRD-106,SUP-01,Apex Titanium & Alloys,69.32,11,902,389,155,2269,On-Time,96.5,2026,2026-02,Friday,Medium-Low,Medium-High,Medium-High,Medium-High,Medium-High
+SUPP-2019,2026-02-08,PRD-101,SUP-04,Rheinland MicroElectronics,225.51,8,715,298,119,2662,On-Time,89.4,2026,2026-02,Sunday,High,Medium-Low,Low,Low,High
+SUPP-2020,2026-02-10,PRD-102,SUP-06,Pacific Sensors & Optics,84.88,10,584,414,165,887,On-Time,93.0,2026,2026-02,Tuesday,Medium-Low,Medium-Low,Medium-High,Medium-High,Low
+SUPP-2021,2026-02-12,PRD-101,SUP-03,Nippon Advanced Composites,218.17,16,648,282,112,1640,On-Time,98.1,2026,2026-02,Thursday,High,Medium-Low,Low,Low,Medium-Low
+SUPP-2022,2026-02-14,PRD-102,SUP-05,Continental Polymers & Resins,78.02,13,574,400,160,1754,On-Time,91.8,2026,2026-02,Saturday,Medium-Low,Medium-Low,Medium-High,Medium-High,Medium-Low
+SUPP-2023,2026-02-16,PRD-106,SUP-02,Nordic Precision Steels,68.78,12,155,320,128,1392,On-Time,94.2,2026,2026-02,Monday,Medium-Low,Low,Medium-Low,Medium-Low,Medium-Low
+SUPP-2024,2026-02-18,PRD-103,SUP-05,Continental Polymers & Resins,94.54,16,663,454,181,905,On-Time,91.8,2026,2026-02,Wednesday,Medium-High,Medium-Low,High,High,Low
+SUPP-2025,2026-02-20,PRD-103,SUP-01,Apex Titanium & Alloys,106.69,18,883,452,180,2126,Expedited,96.5,2026,2026-02,Friday,Medium-High,Medium-High,High,High,Medium-High
+SUPP-2026,2026-02-22,PRD-101,SUP-02,Nordic Precision Steels,191.43,15,693,263,105,2524,On-Time,94.2,2026,2026-02,Sunday,High,Medium-Low,Low,Low,Medium-High
+SUPP-2027,2026-02-24,PRD-102,SUP-06,Pacific Sensors & Optics,81.78,15,280,371,148,2282,On-Time,93.0,2026,2026-02,Tuesday,Medium-Low,Low,Medium-High,Medium-High,Medium-High
+SUPP-2028,2026-02-26,PRD-102,SUP-04,Rheinland MicroElectronics,89.84,19,1181,306,122,977,Expedited,89.4,2026,2026-02,Thursday,Medium-High,High,Low,Low,Low
+SUPP-2029,2026-02-28,PRD-105,SUP-04,Rheinland MicroElectronics,47.87,14,213,265,106,2445,On-Time,89.4,2026,2026-02,Saturday,Low,Low,Low,Low,Medium-High
+SUPP-2030,2026-03-02,PRD-107,SUP-06,Pacific Sensors & Optics,35.86,12,371,375,150,2616,On-Time,93.0,2026,2026-03,Monday,Low,Low,Medium-High,Medium-High,High
+SUPP-2031,2026-03-04,PRD-102,SUP-01,Apex Titanium & Alloys,76.92,16,809,405,162,1316,On-Time,96.5,2026,2026-03,Wednesday,Medium-Low,Medium-High,Medium-High,Medium-High,Low
+SUPP-2032,2026-03-06,PRD-105,SUP-05,Continental Polymers & Resins,47.83,12,815,347,138,2973,On-Time,91.8,2026,2026-03,Friday,Low,Medium-High,Medium-Low,Medium-Low,High
+SUPP-2033,2026-03-08,PRD-105,SUP-04,Rheinland MicroElectronics,43.01,12,1185,404,161,1268,On-Time,89.4,2026,2026-03,Sunday,Low,High,Medium-High,Medium-High,Low
+SUPP-2034,2026-03-10,PRD-104,SUP-04,Rheinland MicroElectronics,134.71,19,1074,477,190,2188,Expedited,89.4,2026,2026-03,Tuesday,High,High,High,High,Medium-High
+SUPP-2035,2026-03-12,PRD-108,SUP-04,Rheinland MicroElectronics,109.87,12,1001,436,174,2548,On-Time,89.4,2026,2026-03,Thursday,Medium-High,High,Medium-High,Medium-High,Medium-High
+SUPP-2036,2026-03-14,PRD-106,SUP-06,Pacific Sensors & Optics,69.98,5,672,345,138,2742,On-Time,93.0,2026,2026-03,Saturday,Medium-Low,Medium-Low,Medium-Low,Medium-Low,High
+SUPP-2037,2026-03-16,PRD-102,SUP-01,Apex Titanium & Alloys,81.52,15,324,273,109,2326,On-Time,96.5,2026,2026-03,Monday,Medium-Low,Low,Low,Low,Medium-High
+SUPP-2038,2026-03-18,PRD-103,SUP-05,Continental Polymers & Resins,110.02,12,272,400,160,2150,On-Time,91.8,2026,2026-03,Wednesday,Medium-High,Low,Medium-High,Medium-High,Medium-High
+SUPP-2039,2026-03-20,PRD-102,SUP-04,Rheinland MicroElectronics,85.3,12,874,473,189,2532,On-Time,89.4,2026,2026-03,Friday,Medium-High,Medium-High,High,High,Medium-High
+SUPP-2040,2026-03-22,PRD-101,SUP-03,Nippon Advanced Composites,190.5,15,789,340,136,2878,On-Time,98.1,2026,2026-03,Sunday,High,Medium-High,Medium-Low,Medium-Low,High
+SUPP-2041,2026-03-24,PRD-104,SUP-02,Nordic Precision Steels,151.98,13,1137,307,122,2234,On-Time,94.2,2026,2026-03,Tuesday,High,High,Medium-Low,Low,Medium-High
+SUPP-2042,2026-03-26,PRD-106,SUP-01,Apex Titanium & Alloys,60.81,14,720,396,158,2557,On-Time,96.5,2026,2026-03,Thursday,Medium-Low,Medium-Low,Medium-High,Medium-High,High
+SUPP-2043,2026-03-28,PRD-101,SUP-05,Continental Polymers & Resins,193.61,5,697,257,102,2065,On-Time,91.8,2026,2026-03,Saturday,High,Medium-Low,Low,Low,Medium-Low
+SUPP-2044,2026-03-30,PRD-106,SUP-03,Nippon Advanced Composites,68.92,10,162,296,118,2441,On-Time,98.1,2026,2026-03,Monday,Medium-Low,Low,Low,Low,Medium-High
+SUPP-2045,2026-04-01,PRD-102,SUP-02,Nordic Precision Steels,86.61,19,212,273,109,1681,Expedited,94.2,2026,2026-04,Wednesday,Medium-High,Low,Low,Low,Medium-Low
+SUPP-2046,2026-04-03,PRD-107,SUP-04,Rheinland MicroElectronics,32.11,13,1079,337,134,2076,On-Time,89.4,2026,2026-04,Friday,Low,High,Medium-Low,Medium-Low,Medium-Low
+SUPP-2047,2026-04-05,PRD-106,SUP-05,Continental Polymers & Resins,58.62,7,323,476,190,1444,On-Time,91.8,2026,2026-04,Sunday,Low,Low,High,High,Medium-Low
+SUPP-2048,2026-04-07,PRD-101,SUP-06,Pacific Sensors & Optics,204.25,9,317,319,127,2536,On-Time,93.0,2026,2026-04,Tuesday,High,Low,Medium-Low,Medium-Low,Medium-High
+SUPP-2049,2026-04-09,PRD-108,SUP-05,Continental Polymers & Resins,114.03,10,1055,356,142,2898,On-Time,91.8,2026,2026-04,Thursday,Medium-High,High,Medium-Low,Medium-Low,High
+SUPP-2050,2026-04-11,PRD-102,SUP-03,Nippon Advanced Composites,79.11,14,1030,278,111,2793,On-Time,98.1,2026,2026-04,Saturday,Medium-Low,High,Low,Low,High
+SUPP-2051,2026-04-13,PRD-105,SUP-01,Apex Titanium & Alloys,47.75,12,601,351,140,1024,On-Time,96.5,2026,2026-04,Monday,Low,Medium-Low,Medium-Low,Medium-Low,Low
+SUPP-2052,2026-04-15,PRD-101,SUP-02,Nordic Precision Steels,194.85,11,767,492,196,1362,On-Time,94.2,2026,2026-04,Wednesday,High,Medium-Low,High,High,Low
+SUPP-2053,2026-04-17,PRD-105,SUP-03,Nippon Advanced Composites,39.4,14,821,280,112,2563,On-Time,98.1,2026,2026-04,Friday,Low,Medium-High,Low,Low,High
+SUPP-2054,2026-04-19,PRD-103,SUP-02,Nordic Precision Steels,105.01,15,928,386,154,2849,On-Time,94.2,2026,2026-04,Sunday,Medium-High,High,Medium-High,Medium-High,High
+SUPP-2055,2026-04-21,PRD-106,SUP-01,Apex Titanium & Alloys,67.31,12,963,470,188,2586,On-Time,96.5,2026,2026-04,Tuesday,Medium-Low,High,High,High,High
+SUPP-2056,2026-04-23,PRD-101,SUP-04,Rheinland MicroElectronics,198.98,11,309,470,188,2558,On-Time,89.4,2026,2026-04,Thursday,High,Low,High,High,High
+SUPP-2057,2026-04-25,PRD-107,SUP-06,Pacific Sensors & Optics,31.83,12,1005,324,129,885,On-Time,93.0,2026,2026-04,Saturday,Low,High,Medium-Low,Medium-Low,Low
+SUPP-2058,2026-04-27,PRD-106,SUP-02,Nordic Precision Steels,66.65,15,1092,462,184,2282,On-Time,94.2,2026,2026-04,Monday,Medium-Low,High,High,High,Medium-High
+SUPP-2059,2026-04-29,PRD-102,SUP-04,Rheinland MicroElectronics,81.58,13,366,312,124,2440,On-Time,89.4,2026,2026-04,Wednesday,Medium-Low,Low,Medium-Low,Medium-Low,Medium-High
+SUPP-2060,2026-05-01,PRD-102,SUP-04,Rheinland MicroElectronics,80.02,17,785,440,176,2164,Expedited,89.4,2026,2026-05,Friday,Medium-Low,Medium-High,High,High,Medium-High
+SUPP-2061,2026-05-03,PRD-103,SUP-01,Apex Titanium & Alloys,93.34,9,1195,412,164,2888,On-Time,96.5,2026,2026-05,Sunday,Medium-High,High,Medium-High,Medium-High,High
+SUPP-2062,2026-05-05,PRD-104,SUP-03,Nippon Advanced Composites,155.07,10,869,436,174,1404,On-Time,98.1,2026,2026-05,Tuesday,High,Medium-High,Medium-High,Medium-High,Medium-Low
+SUPP-2063,2026-05-07,PRD-104,SUP-01,Apex Titanium & Alloys,133.84,17,449,315,126,1426,Expedited,96.5,2026,2026-05,Thursday,High,Medium-Low,Medium-Low,Medium-Low,Medium-Low
+SUPP-2064,2026-05-09,PRD-102,SUP-02,Nordic Precision Steels,86.74,10,1161,368,147,2638,On-Time,94.2,2026,2026-05,Saturday,Medium-High,High,Medium-High,Medium-High,High
+SUPP-2065,2026-05-11,PRD-106,SUP-06,Pacific Sensors & Optics,63.5,19,797,288,115,2720,Expedited,93.0,2026,2026-05,Monday,Medium-Low,Medium-High,Low,Low,High
+SUPP-2066,2026-05-13,PRD-108,SUP-06,Pacific Sensors & Optics,114.07,19,770,453,181,1030,Expedited,93.0,2026,2026-05,Wednesday,Medium-High,Medium-High,High,High,Low
+SUPP-2067,2026-05-15,PRD-106,SUP-05,Continental Polymers & Resins,63.78,19,301,329,131,954,Expedited,91.8,2026,2026-05,Friday,Medium-Low,Low,Medium-Low,Medium-Low,Low
+SUPP-2068,2026-05-17,PRD-101,SUP-03,Nippon Advanced Composites,212.41,10,737,269,107,1169,On-Time,98.1,2026,2026-05,Sunday,High,Medium-Low,Low,Low,Low
+SUPP-2069,2026-05-19,PRD-107,SUP-04,Rheinland MicroElectronics,37.19,14,234,365,146,1571,On-Time,89.4,2026,2026-05,Tuesday,Low,Low,Medium-Low,Medium-Low,Medium-Low
+SUPP-2070,2026-05-21,PRD-106,SUP-05,Continental Polymers & Resins,59.86,12,1124,378,151,1053,On-Time,91.8,2026,2026-05,Thursday,Medium-Low,High,Medium-High,Medium-High,Low
+SUPP-2071,2026-05-23,PRD-108,SUP-01,Apex Titanium & Alloys,109.61,17,853,432,172,1506,Expedited,96.5,2026,2026-05,Saturday,Medium-High,Medium-High,Medium-High,Medium-High,Medium-Low
+SUPP-2072,2026-05-25,PRD-101,SUP-02,Nordic Precision Steels,207.52,20,1046,362,144,1450,Expedited,94.2,2026,2026-05,Monday,High,High,Medium-Low,Medium-Low,Medium-Low
+SUPP-2073,2026-05-27,PRD-106,SUP-03,Nippon Advanced Composites,63.11,17,729,349,139,2185,Expedited,98.1,2026,2026-05,Wednesday,Medium-Low,Medium-Low,Medium-Low,Medium-Low,Medium-High
+SUPP-2074,2026-05-29,PRD-101,SUP-06,Pacific Sensors & Optics,199.65,14,835,266,106,2383,On-Time,93.0,2026,2026-05,Friday,High,Medium-High,Low,Low,Medium-High
+SUPP-2075,2026-05-31,PRD-105,SUP-03,Nippon Advanced Composites,40.03,12,457,335,134,1379,On-Time,98.1,2026,2026-05,Sunday,Low,Medium-Low,Medium-Low,Medium-Low,Low
+SUPP-2076,2026-06-02,PRD-106,SUP-03,Nippon Advanced Composites,65.46,16,952,283,113,1147,On-Time,98.1,2026,2026-06,Tuesday,Medium-Low,High,Low,Low,Low
+SUPP-2077,2026-06-04,PRD-105,SUP-05,Continental Polymers & Resins,46.1,9,921,414,165,1323,On-Time,91.8,2026,2026-06,Thursday,Low,Medium-High,Medium-High,Medium-High,Low
+SUPP-2078,2026-06-06,PRD-102,SUP-06,Pacific Sensors & Optics,80.38,16,1017,380,152,2285,On-Time,93.0,2026,2026-06,Saturday,Medium-Low,High,Medium-High,Medium-High,Medium-High
+SUPP-2079,2026-06-08,PRD-105,SUP-02,Nordic Precision Steels,47.43,10,588,337,134,2791,On-Time,94.2,2026,2026-06,Monday,Low,Medium-Low,Medium-Low,Medium-Low,High
+SUPP-2080,2026-06-10,PRD-104,SUP-02,Nordic Precision Steels,130.49,16,431,289,115,1214,On-Time,94.2,2026,2026-06,Wednesday,Medium-High,Low,Low,Low,Low
+SUPP-2081,2026-06-12,PRD-101,SUP-06,Pacific Sensors & Optics,217.34,13,839,474,189,1336,On-Time,93.0,2026,2026-06,Friday,High,Medium-High,High,High,Low
+SUPP-2082,2026-06-14,PRD-107,SUP-02,Nordic Precision Steels,36.66,12,482,296,118,1478,On-Time,94.2,2026,2026-06,Sunday,Low,Medium-Low,Low,Low,Medium-Low
+SUPP-2083,2026-06-16,PRD-108,SUP-01,Apex Titanium & Alloys,123.47,10,991,343,137,1772,On-Time,96.5,2026,2026-06,Tuesday,Medium-High,High,Medium-Low,Medium-Low,Medium-Low
+SUPP-2084,2026-06-18,PRD-108,SUP-05,Continental Polymers & Resins,125.16,12,733,442,176,2638,On-Time,91.8,2026,2026-06,Thursday,Medium-High,Medium-Low,High,High,High
+SUPP-2085,2026-06-20,PRD-104,SUP-05,Continental Polymers & Resins,155.28,16,639,329,131,2721,On-Time,91.8,2026,2026-06,Saturday,High,Medium-Low,Medium-Low,Medium-Low,High
+SUPP-2086,2026-06-22,PRD-104,SUP-03,Nippon Advanced Composites,149.81,18,1052,368,147,2364,Expedited,98.1,2026,2026-06,Monday,High,High,Medium-High,Medium-High,Medium-High
+SUPP-2087,2026-06-24,PRD-107,SUP-02,Nordic Precision Steels,35.13,16,558,455,182,1824,On-Time,94.2,2026,2026-06,Wednesday,Low,Medium-Low,High,High,Medium-Low
+SUPP-2088,2026-06-26,PRD-101,SUP-06,Pacific Sensors & Optics,201.33,19,1134,473,189,1220,Expedited,93.0,2026,2026-06,Friday,High,High,High,High,Low
+SUPP-2089,2026-06-28,PRD-102,SUP-03,Nippon Advanced Composites,77.12,24,321,445,178,2640,Delayed,98.1,2026,2026-06,Sunday,Medium-Low,Low,High,High,High
+SUPP-2090,2026-06-30,PRD-103,SUP-04,Rheinland MicroElectronics,109.11,12,337,492,196,2647,On-Time,89.4,2026,2026-06,Tuesday,Medium-High,Low,High,High,High
+SUPP-2091,2026-07-02,PRD-106,SUP-01,Apex Titanium & Alloys,62.96,13,999,263,105,2331,On-Time,96.5,2026,2026-07,Thursday,Medium-Low,High,Low,Low,Medium-High
+SUPP-2092,2026-07-04,PRD-104,SUP-04,Rheinland MicroElectronics,134.6,8,317,345,138,2105,On-Time,89.4,2026,2026-07,Saturday,High,Low,Medium-Low,Medium-Low,Medium-Low
+SUPP-2093,2026-07-06,PRD-102,SUP-06,Pacific Sensors & Optics,76.89,18,836,452,180,956,Expedited,93.0,2026,2026-07,Monday,Medium-Low,Medium-High,High,High,Low
+SUPP-2094,2026-07-08,PRD-105,SUP-04,Rheinland MicroElectronics,45.36,19,434,444,177,2637,Expedited,89.4,2026,2026-07,Wednesday,Low,Medium-Low,High,High,High
+SUPP-2095,2026-07-10,PRD-101,SUP-01,Apex Titanium & Alloys,195.03,10,188,315,126,1412,On-Time,96.5,2026,2026-07,Friday,High,Low,Medium-Low,Medium-Low,Medium-Low
+SUPP-2096,2026-07-12,PRD-107,SUP-01,Apex Titanium & Alloys,33.08,16,740,310,124,995,On-Time,96.5,2026,2026-07,Sunday,Low,Medium-Low,Medium-Low,Medium-Low,Low
+SUPP-2097,2026-07-14,PRD-104,SUP-04,Rheinland MicroElectronics,131.43,18,1086,266,106,2847,Expedited,89.4,2026,2026-07,Tuesday,Medium-High,High,Low,Low,High
+SUPP-2098,2026-07-16,PRD-101,SUP-06,Pacific Sensors & Optics,192.11,14,645,433,173,2558,On-Time,93.0,2026,2026-07,Thursday,High,Medium-Low,Medium-High,Medium-High,High
+SUPP-2099,2026-07-18,PRD-101,SUP-05,Continental Polymers & Resins,209.41,17,872,311,124,1567,Expedited,91.8,2026,2026-07,Saturday,High,Medium-High,Medium-Low,Medium-Low,Medium-Low
