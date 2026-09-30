@@ -4,7 +4,7 @@ import random
 from datetime import datetime, timedelta
 
 def create_enterprise_database():
-    db_path = "e:/projects/sql-llm/backend/data/enterprise_erp.db"
+    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "enterprise_erp.db")
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     
     if os.path.exists(db_path):

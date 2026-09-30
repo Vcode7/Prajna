@@ -268,7 +268,7 @@ class VisualizationService:
         """
         Filters, aggregates, and transforms dataset into ready-to-render ECharts payload.
         """
-        df = pd.read_csv(file_path, encoding='utf-8', on_bad_lines='skip')
+        df = dataset_service.read_file_robust(file_path)
 
         # 1. Apply Filters
         if filters:

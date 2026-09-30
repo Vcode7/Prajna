@@ -40,8 +40,14 @@ class Settings(BaseSettings):
     ollama_timeout: Optional[float] = Field(default=None, validation_alias="OLLAMA_TIMEOUT")
     
     # Database Configurations
-    database_url: str = Field(default="sqlite:///e:/projects/sql-llm/backend/data/enterprise_erp.db", validation_alias="DATABASE_URL")
-    history_database_url: str = Field(default="sqlite:///e:/projects/sql-llm/backend/data/history.db", validation_alias="HISTORY_DATABASE_URL")
+    database_url: str = Field(
+        default=f"sqlite:///{os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'enterprise_erp.db').replace(os.sep, '/')}",
+        validation_alias="DATABASE_URL"
+    )
+    history_database_url: str = Field(
+        default=f"sqlite:///{os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'history.db').replace(os.sep, '/')}",
+        validation_alias="HISTORY_DATABASE_URL"
+    )
     
     # Performance & Security
     schema_cache_ttl: int = Field(default=300, validation_alias="SCHEMA_CACHE_TTL")
@@ -71,6 +77,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
+        "http://localhost:8001",
+        "http://127.0.0.1:8001",
         "*"
     ]
 

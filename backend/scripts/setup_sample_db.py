@@ -4,7 +4,7 @@ import random
 from datetime import datetime, timedelta
 
 def create_sample_database():
-    db_path = "e:/projects/sql-llm/backend/data/sample_sales.db"
+    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "sample_sales.db")
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     
     # Remove existing database if it exists to start fresh

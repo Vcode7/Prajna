@@ -2,8 +2,9 @@ import urllib.request
 import urllib.error
 import json
 import requests
+import os
 
-BASE_URL = "http://127.0.0.1:8001/api"
+BASE_URL = os.environ.get("API_BASE_URL", "http://127.0.0.1:8000/api")
 
 def main():
     print("Testing live backend at:", BASE_URL)

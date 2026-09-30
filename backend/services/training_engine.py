@@ -187,8 +187,10 @@ class TrainingEngine:
         start_time = time.perf_counter()
         logger.info(f"Starting ML training for experiment '{model_name}' ({algorithm} - {problem_type})")
 
-        # 1. Load data
-        df = pd.read_csv(file_path, encoding='utf-8', on_bad_lines='skip')
+        try:
+            df = pd.read_csv(file_path, encoding='utf-8', on_bad_lines='skip')
+        except UnicodeDecodeError:
+            df = pd.read_csv(file_path, encoding='latin-1', on_bad_lines='skip')
         if len(df) < 5:
             raise ValueError("Dataset has too few rows for ML training (minimum 5 required).")
 
