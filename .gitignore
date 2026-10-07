@@ -22,3 +22,38 @@ frontend/*.local
 Thumbs.db
 .vscode/
 .idea/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment
+.env
+.env.*
+
+# Runtime data
+backend/data/uploads/*
+backend/data/projects/*
+backend/data/models/*
+backend/sql_llm.db
+
+# Logs
+*.log
+
+# Node
+node_modules/
+frontend/dist/
+
+# ML artifacts
+*.joblib
+*.pkl
+*.pt
+*.pth
+*.onnx
+*.safetensors
+
+# OS
+.DS_Store
+Thumbs.db
