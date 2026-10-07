@@ -26,7 +26,7 @@ class VisualizationService:
         col_meta = {c: m for c, m in (col_meta or {}).items() if isinstance(m, dict) and not str(c).startswith("_")}
 
         num_cols = [c for c, m in col_meta.items() if m.get("data_type") == "numerical"]
-        cat_cols = [c for c, m in col_meta.items() if m.get("data_type") in ("categorical", "boolean")]
+        cat_cols = [c for c, m in col_meta.items() if m.get("data_type") in ("categorical", "boolean", "text")]
         date_cols = [c for c, m in col_meta.items() if m.get("data_type") == "datetime"]
 
         # ----------------------------------------------------
@@ -516,6 +516,30 @@ INSTRUCTIONS:
    - Query from `dataset` (or JOIN other available tables on common keys if needed).
    - Use standard SQLite aggregations: SUM(), AVG(), COUNT(), MIN(), MAX(), ROUND().
    - Use GROUP BY, ORDER BY, and LIMIT (maximum 50 rows) appropriately.
+
+   CRITICAL RULES FOR NORMALIZED DATA & SALES/ORDER COUNTING:
+   - In normalized or line-item transactional datasets (e.g. invoice line items, sales details, order lines, receipts), a single invoice, transaction, or order is split across multiple rows (one row per item/line).
+   - When the user asks for "count of sales", "number of sales", "sales count", "number of orders", "order count", "transactions count", or "invoices count":
+     * DO NOT use `COUNT(*)` or row count (which only counts line items / rows).
+     * ALWAYS use `COUNT(DISTINCT invoice_no)` (or `COUNT(DISTINCT invoice_number)`, `COUNT(DISTINCT invoice_id)`, `COUNT(DISTINCT order_id)`, `COUNT(DISTINCT bill_no)`, `COUNT(DISTINCT transaction_id)`) based on the unique transaction identifier available in the schema.
+   - Similarly, for any other normalized entities (e.g. unique customers, patients, students, visits), count distinct identifiers with `COUNT(DISTINCT <id_col>)` rather than counting raw detail rows with `COUNT(*)`.
+   - When calculating average metrics per sale/invoice (e.g. average order value), compute `SUM(amount) / COUNT(DISTINCT invoice_no)`.
+
+   CRITICAL RULES FOR CURRENCY & FINANCIAL METRICS:
+   - ALWAYS use the Indian Rupee symbol (`₹`) instead of `$` for all revenue, sales, prices, costs, and profits. NEVER use the dollar sign (`$`) in titles, descriptions, reasoning, or calculations.
+   - Use Indian numbering units (`₹ Lakh`, `₹ Crore`, `₹ L`, `₹ Cr`) and Indian comma grouping where applicable.
+
+   CRITICAL RULES FOR DATES, YEARS & RELATIVE TIME QUERIES:
+   - CURRENT DATE / ANCHOR DATE: ALWAYS consider the "current date" or "present" as the LATEST / MAXIMUM date or year present in the data (if there is a date column or year column). NEVER assume the current calendar date or 2023 or any arbitrary past year.
+   - If the user asks for relative time queries such as "last month", "this month", "last year", "this year", "latest", "recent", or "last 30 days":
+     * Anchor the calculation strictly to the maximum date or maximum year in the dataset.
+     * In SQL, use subqueries dynamically anchored to the max date or year:
+       - For last month: `WHERE strftime('%Y-%m', <date_col>) = strftime('%Y-%m', (SELECT MAX(<date_col>) FROM dataset), '-1 month')`
+       - For this month: `WHERE strftime('%Y-%m', <date_col>) = strftime('%Y-%m', (SELECT MAX(<date_col>) FROM dataset))`
+       - For last year: `WHERE <year_col> = (SELECT MAX(<year_col>) - 1 FROM dataset)` or `WHERE strftime('%Y', <date_col>) = strftime('%Y', (SELECT MAX(<date_col>) FROM dataset), '-1 year')`
+       - For this year: `WHERE <year_col> = (SELECT MAX(<year_col>) FROM dataset)` or `WHERE strftime('%Y', <date_col>) = strftime('%Y', (SELECT MAX(<date_col>) FROM dataset))`
+     * Return the output according to the latest date in the data (e.g. if the dataset has data up to 2026, "last month" must be calculated relative to that latest date in 2026, NOT 2023).
+
 2. Determine `calculations`:
    - State in 1-2 concise sentences the exact aggregations, grouping, calculations, or filters applied.
 3. Select `chart_type`:
@@ -702,7 +726,8 @@ INSTRUCTIONS:
 1. Provide a concise, highly structured Markdown analysis.
 2. Include headings: `### Key Findings`, `### Notable Trends & Patterns`, `### Outliers & Anomalies`, `### Strategic Takeaways`.
 3. Use bullet points and **bold** numbers for key percentages and totals.
-4. Keep the insights actionable, professional, and grounded solely in the provided data.
+4. CURRENCY & NUMBERING METRICS: ALWAYS use the Indian Rupee symbol (`₹`) instead of `$` for all financial/monetary figures. ALWAYS use the Indian numbering system (Crores `Cr`, Lakhs `L` / `Lakh`, and Indian comma notation) instead of the Western Millions/Billions system.
+5. Keep the insights actionable, professional, and grounded solely in the provided data.
 """
         messages = [
             {"role": "system", "content": "You are a helpful business intelligence analyst."},
@@ -718,10 +743,95 @@ INSTRUCTIONS:
                 json_mode=False,
                 task_name="Visualization Insights"
             )
-            return resp
+            if resp and not resp.startswith("Unable to") and not resp.startswith("Error generating"):
+                return resp
+            return self._generate_heuristic_chart_insights(title, chart_type, x_variable, y_variable, aggregated_data, columns)
         except Exception as e:
             logger.error(f"Failed to generate visualization insights: {e}")
-            return f"Unable to generate insights: {str(e)}"
+            return self._generate_heuristic_chart_insights(title, chart_type, x_variable, y_variable, aggregated_data, columns)
+
+    def _generate_heuristic_chart_insights(
+        self,
+        title: str,
+        chart_type: str,
+        x_variable: str,
+        y_variable: str,
+        aggregated_data: List[Dict[str, Any]],
+        columns: List[str]
+    ) -> str:
+        """
+        Generates robust, data-grounded statistical insights using the Indian numbering & currency system.
+        """
+        if not aggregated_data:
+            return f"### Key Findings\n- No data points available in **{title}** to compute statistical insights."
+
+        count = len(aggregated_data)
+        x_col = x_variable or (columns[0] if columns else "X")
+        y_col = y_variable or (columns[1] if len(columns) > 1 else (columns[0] if columns else "Y"))
+
+        is_financial = any(term in f"{title} {y_col} {x_col}".lower() for term in [
+            "revenue", "sales", "price", "cost", "profit", "amount", "budget", "salary", "spend", "rupee", "inr"
+        ])
+
+        def format_inr(val: float) -> str:
+            abs_v = abs(val)
+            prefix = "₹" if is_financial else ""
+            if abs_v >= 10_000_000:
+                return f"{prefix}{val / 10_000_000:.2f} Cr"
+            elif abs_v >= 100_000:
+                return f"{prefix}{val / 100_000:.2f} Lakh"
+            elif abs_v >= 1_000:
+                return f"{prefix}{val / 1_000:.1f} K"
+            else:
+                return f"{prefix}{val:,.2f}"
+
+        num_vals = []
+        for r in aggregated_data:
+            val = r.get(y_col)
+            if val is not None:
+                try:
+                    num_vals.append((str(r.get(x_col, "Unknown")), float(val)))
+                except (ValueError, TypeError):
+                    pass
+
+        if num_vals:
+            sorted_by_val = sorted(num_vals, key=lambda item: item[1], reverse=True)
+            top_item = sorted_by_val[0]
+            bottom_item = sorted_by_val[-1]
+            vals_only = [v[1] for v in num_vals]
+            avg_val = sum(vals_only) / len(vals_only)
+            total_val = sum(vals_only)
+            pct_top = (top_item[1] / total_val * 100) if total_val > 0 else 0
+            ratio = (top_item[1] / bottom_item[1]) if bottom_item[1] > 0 else 1.0
+            top_3_sum = sum(v[1] for v in sorted_by_val[:3])
+
+            return f"""### Key Findings
+- **Data Distribution:** Analyzed **{count} records** for **{title}** ({chart_type} chart).
+- **Peak Performer:** **{top_item[0]}** leads with **{format_inr(top_item[1])}** (accounting for **{pct_top:.1f}%** of cumulative total).
+- **Lowest Value:** **{bottom_item[0]}** recorded the baseline value at **{format_inr(bottom_item[1])}**.
+- **Average Metric:** The mean value across all observed categories is **{format_inr(avg_val)}**.
+
+### Notable Trends & Patterns
+- Values range from **{format_inr(bottom_item[1])}** to **{format_inr(top_item[1])}**, representing a spread ratio of **{ratio:.1f}x**.
+- The top 3 categories account for **{format_inr(top_3_sum)}**, demonstrating concentrated volume in leading cohorts.
+
+### Outliers & Anomalies
+- Segments trailing below the mean of **{format_inr(avg_val)}** indicate variance that warrants deeper root-cause evaluation.
+
+### Strategic Takeaways
+- Leverage high-performing categories anchored by **{top_item[0]}** to replicate success across slower cohorts.
+- Target interventions on lagging segments to close the performance gap."""
+
+        return f"""### Key Findings
+- Analyzed **{count} records** across columns: **{', '.join(columns)}**.
+- The chart visualizes the distribution between **{x_col}** and **{y_col}**.
+
+### Notable Trends & Patterns
+- Groupings reflect active distribution across observed dimensions.
+
+### Strategic Takeaways
+- Explore granular filtering or cross-variable segmentation to uncover deeper patterns."""
+
 
     def get_dataset_multi_table_schema(self, dataset_id: str, db: Session) -> Dict[str, Any]:
         """
@@ -1492,7 +1602,7 @@ REQUIREMENTS:
         history_context = ""
         if history:
             trimmed = []
-            for m in history[-4:]:
+            for m in history[-3:]:
                 role = m.get("role", "user")
                 c = (m.get("content") or "").strip()
                 if role == "assistant" and len(c) > 200:
@@ -1541,6 +1651,7 @@ YOUR TASK:
    - If tables share keys (e.g. `product_id`, `machine_id`), write standard SQLite JOIN syntax.
    - Use standard SQLite functions: SUM(), AVG(), COUNT(), MIN(), MAX(), ROUND().
    - Include GROUP BY, ORDER BY, and LIMIT (maximum 50 rows) where appropriate.
+   - DATE / TIME HANDLING RULE: Always treat the "current date" as the LATEST / MAXIMUM date or year present in the data (if there is a date or year column). Never assume 2023 or the real calendar date. For queries like "last month", "this month", "last year", "latest", anchor relative to `(SELECT MAX(<date_column>) FROM ...)` or `(SELECT MAX(<year_column>) FROM ...)`. Output must be calculated relative to the latest data (e.g., up to 2026).
 
 3. Select the best chart configuration if intent is "visualization".
    - chart_type: "Bar" | "Horizontal Bar" | "Line" | "Area" | "Pie" | "Donut" | "Scatter" | "Stacked Bar" | "Stacked Area" | "Treemap" | "Metric"
@@ -1626,8 +1737,9 @@ Rows: {json.dumps(sample_rows)}
 INSTRUCTIONS:
 1. Provide a direct, professional, natural-language answer to the user's question.
 2. Highlight specific values, leaders, minimums, maximums, or averages found in the data.
-3. Offer 1-2 useful analytical insights or strategic takeaways based on the results.
-4. DO NOT show raw SQL queries or database code in your answer. Keep it executive and clean."""
+3. CURRENCY & NUMBERING METRICS: ALWAYS use the Indian Rupee symbol (`₹`) instead of `$` for all financial amounts. ALWAYS use the Indian numbering system (Crores `Cr`, Lakhs `L` / `Lakh`, and Indian comma notation) instead of the Western Millions/Billions system.
+4. Offer 1-2 useful analytical insights or strategic takeaways based on the results.
+5. DO NOT show raw SQL queries or database code in your answer. Keep it executive and clean."""
 
                 synthesized_text = await groq_client.get_chat_completion(
                     messages=[
@@ -1674,7 +1786,7 @@ INSTRUCTIONS:
                 prompt_vis_explanation = f"""The user requested a visualization: "{prompt_text}".
 Chart: {chart_type} titled '{title}'.
 Data Sample: {json.dumps(query_result.get('rows', [])[:10])}
-Write 1-2 concise sentences explaining what this chart reveals and the main insight. Do not show SQL."""
+Write 1-2 concise sentences explaining what this chart reveals and the main insight. Always use the Indian Rupee symbol (₹) and Indian metrics (Lakh/Crore) for financial figures. Do not show SQL."""
 
                 try:
                     explanation_text = await groq_client.get_chat_completion(

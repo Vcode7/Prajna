@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useChatStore } from '../store/chatStore';
 import { api } from '../api/client';
-import ChartTab from '../components/ChartTab';
+import ChartTab, { calculateChartHeight } from '../components/ChartTab';
 import DashboardPreviewView from '../components/DashboardPreviewView';
 import KPICard from '../components/KPICard';
 import AskAIChartModal from '../components/AskAIChartModal';
 import ChartForecastModal from '../components/ChartForecastModal';
+import MarkdownRenderer from '../components/MarkdownRenderer';
 import {
   THEME_TEMPLATES,
   CARD_STYLES,
@@ -15,10 +16,211 @@ import {
   getChartShadowStyle
 } from '../constants/dashboardThemes';
 import {
-  LayoutDashboard, Eye, Edit3, Plus, Trash2, ArrowLeft,
+  LayoutDashboard, Eye, Edit3, Plus, Trash2, ArrowLeft, ArrowRight, ArrowUp, ArrowDown,
   Sparkles, BrainCircuit, Move, Check, X, Share2, Layers,
   RefreshCw, TrendingUp, AlertCircle, ChevronDown, Palette, Database
 } from 'lucide-react';
+
+// ── Directional Movement Controls ──────────────────────────────────
+function ChartMoveControls({ cardId, onMove, canMoveUp, canMoveDown, canMoveLeft, canMoveRight }) {
+  return (
+    <div
+      className="inline-flex items-center space-x-0.5 bg-slate-100 dark:bg-slate-800/90 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700/80 shadow-2xs shrink-0"
+      onClick={(e) => e.stopPropagation()}
+      title="Move chart position in dashboard grid"
+    >
+      <button
+        type="button"
+        onClick={() => onMove(cardId, 'left')}
+        disabled={!canMoveLeft}
+        className="p-1 rounded text-slate-500 hover:text-violet-600 dark:text-slate-400 dark:hover:text-violet-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-25 disabled:cursor-not-allowed transition-all cursor-pointer active:scale-95"
+        title="Move Left (←)"
+      >
+        <ArrowLeft className="w-3 h-3" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onMove(cardId, 'up')}
+        disabled={!canMoveUp}
+        className="p-1 rounded text-slate-500 hover:text-violet-600 dark:text-slate-400 dark:hover:text-violet-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-25 disabled:cursor-not-allowed transition-all cursor-pointer active:scale-95"
+        title="Move Up (↑)"
+      >
+        <ArrowUp className="w-3 h-3" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onMove(cardId, 'down')}
+        disabled={!canMoveDown}
+        className="p-1 rounded text-slate-500 hover:text-violet-600 dark:text-slate-400 dark:hover:text-violet-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-25 disabled:cursor-not-allowed transition-all cursor-pointer active:scale-95"
+        title="Move Down (↓)"
+      >
+        <ArrowDown className="w-3 h-3" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onMove(cardId, 'right')}
+        disabled={!canMoveRight}
+        className="p-1 rounded text-slate-500 hover:text-violet-600 dark:text-slate-400 dark:hover:text-violet-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-25 disabled:cursor-not-allowed transition-all cursor-pointer active:scale-95"
+        title="Move Right (→)"
+      >
+        <ArrowRight className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
+// ── Text-Based Dimension Input (Width & Height) ────────────────────
+function DimensionTextInput({
+  label,
+  value,
+  onChange,
+  unit = '',
+  tooltip,
+  placeholder,
+  min,
+  max,
+  isWidth = false,
+  presets = []
+}) {
+  const [localVal, setLocalVal] = useState(String(value ?? ''));
+  const [isFocused, setIsFocused] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  // Synchronize local input state whenever the prop updates outside active typing
+  useEffect(() => {
+    if (!isFocused) {
+      setLocalVal(String(value ?? ''));
+    }
+  }, [value, isFocused]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setDropdownOpen(false);
+      }
+    };
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [dropdownOpen]);
+
+  const commitValue = (valToCommit) => {
+    const toParse = (valToCommit !== undefined ? valToCommit : localVal);
+    const cleaned = String(toParse ?? '').trim().replace(/px|cols?|%/gi, '').trim();
+
+    if (!cleaned) {
+      setLocalVal(String(value ?? ''));
+      return;
+    }
+
+    const parsed = parseInt(cleaned, 10);
+    if (isNaN(parsed) || parsed <= 0) {
+      setLocalVal(String(value ?? ''));
+      return;
+    }
+
+    if (isWidth) {
+      let cols = parsed;
+      if (parsed > 12) {
+        // Map pixel widths (e.g. 150, 300, 450, 600) to 12-column grid spans (~100px per col)
+        cols = Math.min(12, Math.max(1, Math.round(parsed / 100)));
+      } else {
+        cols = Math.min(12, Math.max(1, parsed));
+      }
+      onChange(cols, parsed);
+      setLocalVal(String(parsed > 12 ? parsed : cols));
+    } else {
+      const validHeight = Math.min(max || 1600, Math.max(min || 100, parsed));
+      onChange(validHeight);
+      setLocalVal(String(validHeight));
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="relative inline-flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 hover:border-violet-400 dark:hover:border-violet-600 transition-colors shadow-2xs"
+        title={tooltip}
+      >
+        <span className="text-[9px] font-extrabold uppercase text-slate-400 select-none">{label}:</span>
+        <input
+          type="text"
+          value={localVal}
+          placeholder={placeholder}
+          onFocus={() => setIsFocused(true)}
+          onChange={(e) => setLocalVal(e.target.value)}
+          onBlur={() => {
+            setIsFocused(false);
+            commitValue();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.currentTarget.blur();
+            } else if (e.key === 'Escape') {
+              setLocalVal(String(value ?? ''));
+              e.currentTarget.blur();
+            }
+          }}
+          className="w-9 sm:w-11 text-center text-[10px] font-bold bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-violet-500"
+        />
+        {unit && <span className="text-[8px] font-semibold text-slate-400 select-none">{unit}</span>}
+
+        {presets.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setDropdownOpen(prev => !prev)}
+            className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+            title={`Select ${label} presets`}
+          >
+            <ChevronDown className="w-2.5 h-2.5 opacity-70" />
+          </button>
+        )}
+      </div>
+
+      {/* Presets dropdown */}
+      {dropdownOpen && (
+        <div className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 z-50 space-y-1.5 w-36 animate-fadeIn">
+          <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
+            <span className="text-[9px] uppercase font-bold text-slate-400">
+              {isWidth ? 'Column Width' : 'Height Presets'}
+            </span>
+            <span className="text-[9px] font-mono text-violet-600 dark:text-violet-400 font-bold">
+              {value}{unit}
+            </span>
+          </div>
+
+          <div className={`grid ${isWidth ? 'grid-cols-4' : 'grid-cols-2'} gap-1`}>
+            {presets.map((preset) => {
+              const pVal = typeof preset === 'object' ? preset.val : preset;
+              const pLabel = typeof preset === 'object' ? preset.label : `${pVal}${unit}`;
+              const isSelected = value === pVal;
+              return (
+                <button
+                  key={pVal}
+                  type="button"
+                  onClick={() => {
+                    commitValue(pVal);
+                    setDropdownOpen(false);
+                  }}
+                  className={`py-1 px-1 text-center rounded text-[10px] font-bold truncate transition-colors cursor-pointer ${
+                    isSelected
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 hover:bg-violet-100 dark:hover:bg-violet-950 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  {pLabel}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function DashboardBuilderPage() {
   const { dashboardId } = useParams();
@@ -71,6 +273,53 @@ export default function DashboardBuilderPage() {
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [askAiModalCard, setAskAiModalCard] = useState(null);
   const [cardConversations, setCardConversations] = useState({}); // cardId -> array of message turns
+
+  // Chart Insights State (Toggle view between chart and insight inside the same card)
+  const [cardViewModes, setCardViewModes] = useState({}); // cardId -> 'chart' | 'insight'
+  const [cardInsightsMap, setCardInsightsMap] = useState({}); // cardId -> insight string
+  const [loadingInsightsMap, setLoadingInsightsMap] = useState({}); // cardId -> boolean
+  const [cardInsightErrors, setCardInsightErrors] = useState({}); // cardId -> string
+
+  const handleGenerateCardInsight = async (card, forceRegenerate = false) => {
+    const cardId = card.id;
+    setCardViewModes(prev => ({ ...prev, [cardId]: 'insight' }));
+
+    const existingInsight = cardInsightsMap[cardId] || card.insights;
+    if (existingInsight && !forceRegenerate) {
+      return;
+    }
+
+    setLoadingInsightsMap(prev => ({ ...prev, [cardId]: true }));
+    setCardInsightErrors(prev => ({ ...prev, [cardId]: null }));
+
+    const cardData = cardDataMap[cardId] || { columns: [], rows: [] };
+
+    try {
+      const res = await api.generateVisualizationInsights({
+        visualization_id: card.visualization_id || undefined,
+        dataset_id: dashboard?.project_id || activeProjectId || card.dataset_id,
+        title: card.title,
+        chart_type: card.chart_type,
+        x_variable: card.x_variable || cardData.columns[0] || '',
+        y_variable: card.y_variable || cardData.columns[1] || '',
+        aggregated_data: cardData.rows || [],
+        columns: cardData.columns || []
+      });
+
+      const insightContent = res?.insights || 'No insights returned.';
+      setCardInsightsMap(prev => ({ ...prev, [cardId]: insightContent }));
+      handleUpdateCard(card.id, { insights: insightContent });
+    } catch (err) {
+      console.error(`Failed to generate insights for card ${cardId}:`, err);
+      setCardInsightErrors(prev => ({ ...prev, [cardId]: err.message || 'Failed to generate insights' }));
+    } finally {
+      setLoadingInsightsMap(prev => ({ ...prev, [cardId]: false }));
+    }
+  };
+
+  const handleRestoreCardChart = (cardId) => {
+    setCardViewModes(prev => ({ ...prev, [cardId]: 'chart' }));
+  };
 
   useEffect(() => {
     if (dashboardId) {
@@ -218,6 +467,109 @@ export default function DashboardBuilderPage() {
     const updated = { ...dashboard, tabs: updatedTabs };
     setDashboard(updated);
     saveDashboardChanges(updated);
+  };
+
+  // ── 4-Way Grid Movement Logic (Up, Down, Left, Right) ───────────
+  const handleMoveCard = (cardId, direction) => {
+    const currentTab = (dashboard?.tabs || []).find(t => t.id === activeTabId);
+    if (!currentTab) return;
+
+    const layout = [...(currentTab.layout || [])];
+    const currentIdx = layout.findIndex(c => c.id === cardId);
+    if (currentIdx === -1) return;
+
+    // Recalculate 12-column grid rows
+    const rows = [];
+    let currentRow = [];
+    let currentCols = 0;
+
+    layout.forEach((card, idx) => {
+      const rawSpan = card.col_span || card.width;
+      const span = Math.min(
+        12,
+        Math.max(
+          1,
+          rawSpan
+            ? (rawSpan <= 12 ? rawSpan : Math.round(rawSpan / 100))
+            : (card.chart_type === 'Metric' ? 3 : 6)
+        )
+      );
+      if (currentCols + span > 12 && currentRow.length > 0) {
+        rows.push(currentRow);
+        currentRow = [];
+        currentCols = 0;
+      }
+      currentRow.push({ card, idx, span, colStart: currentCols });
+      currentCols += span;
+    });
+    if (currentRow.length > 0) {
+      rows.push(currentRow);
+    }
+
+    let currentPos = null;
+    let currentRowIdx = -1;
+    for (let r = 0; r < rows.length; r++) {
+      const found = rows[r].find(item => item.card.id === cardId);
+      if (found) {
+        currentPos = found;
+        currentRowIdx = r;
+        break;
+      }
+    }
+
+    let targetIdx = -1;
+
+    if (direction === 'left') {
+      if (currentIdx > 0) {
+        targetIdx = currentIdx - 1;
+      }
+    } else if (direction === 'right') {
+      if (currentIdx < layout.length - 1) {
+        targetIdx = currentIdx + 1;
+      }
+    } else if (direction === 'up') {
+      if (currentRowIdx > 0) {
+        const prevRow = rows[currentRowIdx - 1];
+        let closest = prevRow[0];
+        let minDiff = Math.abs(closest.colStart - (currentPos?.colStart || 0));
+        for (let i = 1; i < prevRow.length; i++) {
+          const diff = Math.abs(prevRow[i].colStart - (currentPos?.colStart || 0));
+          if (diff < minDiff) {
+            minDiff = diff;
+            closest = prevRow[i];
+          }
+        }
+        targetIdx = closest.idx;
+      }
+    } else if (direction === 'down') {
+      if (currentRowIdx < rows.length - 1) {
+        const nextRow = rows[currentRowIdx + 1];
+        let closest = nextRow[0];
+        let minDiff = Math.abs(closest.colStart - (currentPos?.colStart || 0));
+        for (let i = 1; i < nextRow.length; i++) {
+          const diff = Math.abs(nextRow[i].colStart - (currentPos?.colStart || 0));
+          if (diff < minDiff) {
+            minDiff = diff;
+            closest = nextRow[i];
+          }
+        }
+        targetIdx = closest.idx;
+      }
+    }
+
+    if (targetIdx !== -1 && targetIdx !== currentIdx) {
+      const temp = layout[currentIdx];
+      layout[currentIdx] = layout[targetIdx];
+      layout[targetIdx] = temp;
+
+      const reorderedLayout = layout.map((card, idx) => ({ ...card, order: idx }));
+      const updatedTabs = (dashboard.tabs || []).map(t => 
+        t.id === activeTabId ? { ...t, layout: reorderedLayout } : t
+      );
+      const updated = { ...dashboard, tabs: updatedTabs };
+      setDashboard(updated);
+      saveDashboardChanges(updated);
+    }
   };
 
   const handleRemoveCard = (cardId) => {
@@ -463,6 +815,54 @@ export default function DashboardBuilderPage() {
     setTimeout(() => setShowShareToast(false), 3000);
   };
 
+  // Compute 12-column grid rows & position boundaries for each card
+  // ⚠️ Must be declared BEFORE any conditional early return (Rules of Hooks)
+  const _activeTabForMemo = (dashboard?.tabs || []).find(t => t.id === activeTabId) || dashboard?.tabs?.[0];
+  const _activeLayoutForMemo = _activeTabForMemo?.layout || [];
+  const gridCardPositions = useMemo(() => {
+    const rows = [];
+    let currentRow = [];
+    let currentCols = 0;
+
+    _activeLayoutForMemo.forEach((card, idx) => {
+      const rawSpan = card.col_span || card.width;
+      const span = Math.min(
+        12,
+        Math.max(
+          1,
+          rawSpan
+            ? (rawSpan <= 12 ? rawSpan : Math.round(rawSpan / 100))
+            : (card.chart_type === 'Metric' ? 3 : 6)
+        )
+      );
+      if (currentCols + span > 12 && currentRow.length > 0) {
+        rows.push(currentRow);
+        currentRow = [];
+        currentCols = 0;
+      }
+      currentRow.push({ cardId: card.id, idx, span, colStart: currentCols });
+      currentCols += span;
+    });
+    if (currentRow.length > 0) {
+      rows.push(currentRow);
+    }
+
+    const posMap = {};
+    rows.forEach((row, rowIdx) => {
+      row.forEach((item) => {
+        posMap[item.cardId] = {
+          rowIdx,
+          colStart: item.colStart,
+          canMoveUp: rowIdx > 0,
+          canMoveDown: rowIdx < rows.length - 1,
+          canMoveLeft: item.idx > 0,
+          canMoveRight: item.idx < _activeLayoutForMemo.length - 1
+        };
+      });
+    });
+    return posMap;
+  }, [_activeLayoutForMemo]);
+
   if (loading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-slate-50 dark:bg-[#090d16] text-slate-500">
@@ -510,6 +910,11 @@ export default function DashboardBuilderPage() {
         chartShadow={dashboard.settings?.chart_shadow ?? true}
         shadowIntensity={dashboard.settings?.shadow_intensity || 'medium'}
         chartAnimation={dashboard.settings?.chart_animation ?? true}
+        cardInsightsMap={cardInsightsMap}
+        onUpdateCardInsights={(cId, txt) => {
+          setCardInsightsMap(prev => ({ ...prev, [cId]: txt }));
+          handleUpdateCard(cId, { insights: txt });
+        }}
         onBackToEditor={isDirectPreview ? null : () => setMode('edit')}
         onThemeChange={(newTheme, accent, newCardStyle, newColorMode, extraSettings = {}) => {
           const updatedSettings = {
@@ -918,16 +1323,28 @@ export default function DashboardBuilderPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             {activeLayout.map((card) => {
-              const colSpan = Math.min(12, Math.max(1, card.col_span || card.width || (card.chart_type === 'Metric' ? 3 : 6)));
+              const rawCol = card.col_span || card.width;
+              const colSpan = Math.min(
+                12,
+                Math.max(
+                  1,
+                  rawCol
+                    ? (rawCol <= 12 ? rawCol : Math.round(rawCol / 100))
+                    : (card.chart_type === 'Metric' ? 3 : 6)
+                )
+              );
+              const cardData = cardDataMap[card.id] || { columns: [], rows: [] };
               const isMetric = card.chart_type === 'Metric';
-              const defaultH = isMetric ? 140 : 360;
+              const defaultH = isMetric
+                ? 140
+                : Math.max(360, calculateChartHeight(card, cardData.rows, cardData.columns) + 40);
               const cardHeight = card.height || defaultH;
               const isDragging = draggedCardId === card.id;
               const isDragOver = dragOverCardId === card.id;
-              const cardData = cardDataMap[card.id] || { columns: [], rows: [] };
               const isLoadingData = !!loadingCardsMap[card.id];
               const hasMlForecast = !!card.ml_model_config && !!card.ml_forecast;
               const isSelected = mode === 'edit' && selectedCardId === card.id;
+              const isViewingInsight = cardViewModes[card.id] === 'insight';
 
               return (
                 <div
@@ -960,7 +1377,7 @@ export default function DashboardBuilderPage() {
                   } ${mode === 'edit' ? 'cursor-pointer' : ''}`}
                 >
                   {/* Card Header Bar */}
-                  <div className={`p-3 ${cardMeta.headerClass} flex items-center justify-between gap-2 shrink-0`}>
+                  <div className={`p-3 ${cardMeta.headerClass} flex items-center justify-between gap-2 shrink-0 overflow-scroll`}>
                     <div className="flex items-center space-x-2 min-w-0">
                       {mode === 'edit' && (
                         <div
@@ -999,8 +1416,103 @@ export default function DashboardBuilderPage() {
 
                     {/* Edit Mode Quick Controls */}
                     {mode === 'edit' && (
-                      <div className="flex items-center space-x-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center space-x-1.5 shrink-0 flex-wrap gap-y-1 justify-end" onClick={(e) => e.stopPropagation()}>
                         
+                        {/* 1. Chart Movement Controls (Move Up, Move Down, Move Left, Move Right) */}
+                        <ChartMoveControls
+                          cardId={card.id}
+                          onMove={handleMoveCard}
+                          canMoveUp={gridCardPositions[card.id]?.canMoveUp ?? false}
+                          canMoveDown={gridCardPositions[card.id]?.canMoveDown ?? false}
+                          canMoveLeft={gridCardPositions[card.id]?.canMoveLeft ?? false}
+                          canMoveRight={gridCardPositions[card.id]?.canMoveRight ?? false}
+                        />
+
+                        {/* 2. Custom Width Text Input */}
+                        <DimensionTextInput
+                          label="W"
+                          value={card.custom_width || (card.width && card.width > 12 ? card.width : colSpan)}
+                          unit={Number(card.custom_width || card.width || colSpan) > 12 ? 'px' : '/12'}
+                          isWidth={true}
+                          tooltip="Custom Width: freely type columns (1-12) or pixels (e.g. 150, 300, 450)"
+                          placeholder="cols/px"
+                          presets={[
+                            { label: '1 col', val: 1 },
+                            { label: '2 cols (150px)', val: 2 },
+                            { label: '3 cols (300px)', val: 3 },
+                            { label: '4 cols (450px)', val: 4 },
+                            { label: '6 cols (Half)', val: 6 },
+                            { label: '8 cols', val: 8 },
+                            { label: '10 cols', val: 10 },
+                            { label: '12 cols (Full)', val: 12 }
+                          ]}
+                          onChange={(cols, customW) => {
+                            handleUpdateCard(card.id, {
+                              col_span: cols,
+                              width: customW || cols,
+                              custom_width: customW || cols
+                            });
+                          }}
+                        />
+
+                        {/* 3. Custom Height Text Input */}
+                        <DimensionTextInput
+                          label="H"
+                          value={cardHeight}
+                          unit="px"
+                          isWidth={false}
+                          min={80}
+                          max={1600}
+                          tooltip="Custom Height in pixels (e.g. 150, 300, 450)"
+                          placeholder="px"
+                          presets={[
+                            { label: '140px (KPI)', val: 140 },
+                            { label: '220px', val: 220 },
+                            { label: '300px', val: 300 },
+                            { label: '360px', val: 360 },
+                            { label: '450px', val: 450 },
+                            { label: '560px', val: 560 },
+                            { label: '700px', val: 700 }
+                          ]}
+                          onChange={(newHeight) => {
+                            handleUpdateCard(card.id, { height: newHeight });
+                          }}
+                        />
+
+                        {/* Generate Insight / Back Toggle Button */}
+                        {!isMetric && (
+                          isViewingInsight ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRestoreCardChart(card.id);
+                              }}
+                              className="px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[10px] font-bold flex items-center space-x-1 transition-all cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-[0.98]"
+                              title="Restore Original Chart"
+                            >
+                              <ArrowLeft className="w-3 h-3 text-slate-400" />
+                              <span>Back</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleGenerateCardInsight(card);
+                              }}
+                              disabled={loadingInsightsMap[card.id]}
+                              className="px-2.5 py-1 rounded-lg border border-violet-200 dark:border-violet-800/80 hover:border-violet-400 bg-violet-50/80 dark:bg-violet-950/60 hover:bg-violet-100 dark:hover:bg-violet-900/80 text-violet-700 dark:text-violet-300 text-[10px] font-bold flex items-center space-x-1 transition-all cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-[0.98]"
+                              title="Generate AI insights for this chart"
+                            >
+                              {loadingInsightsMap[card.id] ? (
+                                <RefreshCw className="w-3 h-3 text-violet-500 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-3 h-3 text-amber-500" />
+                              )}
+                              <span>Generate Insight</span>
+                            </button>
+                          )
+                        )}
+
                         {/* Ask AI Copilot Button */}
                         <button
                           onClick={(e) => {
@@ -1018,104 +1530,10 @@ export default function DashboardBuilderPage() {
                           <span>Ask AI</span>
                         </button>
 
-                        {/* Arbitrary Width Selector */}
-                        <div className="relative group">
-                          <button
-                            className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center space-x-1"
-                            title="Adjust Width (1 to 12 columns)"
-                          >
-                            <span>W: {colSpan === 12 ? 'Full' : `${colSpan}/12`}</span>
-                            <ChevronDown className="w-2.5 h-2.5 opacity-60" />
-                          </button>
-                          <div className="hidden group-hover:block absolute right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 z-30 space-y-1.5 w-36">
-                            <span className="text-[9px] uppercase font-bold text-slate-400 block px-1">Column Width:</span>
-                            <div className="grid grid-cols-4 gap-1">
-                              {[1, 2, 3, 4, 6, 8, 10, 12].map(num => (
-                                <button
-                                  key={num}
-                                  onClick={() => handleUpdateCard(card.id, { col_span: num, width: num })}
-                                  className={`py-1 text-center rounded text-[10px] font-bold ${
-                                    colSpan === num
-                                      ? 'bg-violet-600 text-white'
-                                      : 'bg-slate-100 dark:bg-slate-800 hover:bg-violet-100 dark:hover:bg-violet-950 text-slate-700 dark:text-slate-300'
-                                  }`}
-                                >
-                                  {num}
-                                </button>
-                              ))}
-                            </div>
-                            <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px]">
-                              <span className="text-slate-400">Custom (1-12):</span>
-                              <input
-                                type="number"
-                                min="1"
-                                max="12"
-                                value={colSpan}
-                                onChange={(e) => {
-                                  const val = Math.max(1, Math.min(12, parseInt(e.target.value) || 1));
-                                  handleUpdateCard(card.id, { col_span: val, width: val });
-                                }}
-                                className="w-12 px-1 py-0.5 rounded border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-center font-bold"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Arbitrary Height Selector */}
-                        <div className="relative group">
-                          <button
-                            className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center space-x-1"
-                            title="Adjust Height (in pixels)"
-                          >
-                            <span>H: {cardHeight}px</span>
-                            <ChevronDown className="w-2.5 h-2.5 opacity-60" />
-                          </button>
-                          <div className="hidden group-hover:block absolute right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 z-30 space-y-1.5 w-40">
-                            <span className="text-[9px] uppercase font-bold text-slate-400 block px-1">Height Presets:</span>
-                            <div className="grid grid-cols-2 gap-1">
-                              {[
-                                { label: '140px (KPI)', val: 140 },
-                                { label: '220px', val: 220 },
-                                { label: '300px', val: 300 },
-                                { label: '360px', val: 360 },
-                                { label: '460px', val: 460 },
-                                { label: '560px', val: 560 },
-                              ].map(item => (
-                                <button
-                                  key={item.val}
-                                  onClick={() => handleUpdateCard(card.id, { height: item.val })}
-                                  className={`py-1 px-1.5 text-left rounded text-[9px] font-bold truncate ${
-                                    cardHeight === item.val
-                                      ? 'bg-violet-600 text-white'
-                                      : 'bg-slate-100 dark:bg-slate-800 hover:bg-violet-100 dark:hover:bg-violet-950 text-slate-700 dark:text-slate-300'
-                                  }`}
-                                >
-                                  {item.label}
-                                </button>
-                              ))}
-                            </div>
-                            <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px]">
-                              <span className="text-slate-400">Custom (px):</span>
-                              <input
-                                type="number"
-                                min="100"
-                                max="1000"
-                                step="10"
-                                value={cardHeight}
-                                onChange={(e) => {
-                                  const val = Math.max(100, Math.min(1000, parseInt(e.target.value) || 200));
-                                  handleUpdateCard(card.id, { height: val });
-                                }}
-                                className="w-16 px-1 py-0.5 rounded border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-center font-bold"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
                         {/* Train ML Model / Forecasting Button */}
                         <button
                           onClick={() => openMlModal(card)}
-                          className={`p-1.5 rounded-lg text-xs transition-colors ${
+                          className={`p-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
                             hasMlForecast
                               ? 'bg-orange-100 dark:bg-orange-950 text-orange-600 dark:text-orange-400 hover:bg-orange-200'
                               : 'text-slate-400 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950/40'
@@ -1129,7 +1547,7 @@ export default function DashboardBuilderPage() {
                         {(dashboard.tabs || []).length > 1 && (
                           <div className="relative group">
                             <button
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-violet-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-violet-500 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                               title="Move to another section"
                             >
                               <Layers className="w-3.5 h-3.5" />
@@ -1157,7 +1575,7 @@ export default function DashboardBuilderPage() {
                         {/* Remove Card Button */}
                         <button
                           onClick={() => handleRemoveCard(card.id)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
                           title="Remove from Dashboard"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1186,6 +1604,87 @@ export default function DashboardBuilderPage() {
                         mode="edit"
                         isLoading={isLoadingData}
                       />
+                    ) : isViewingInsight ? (
+                      /* ── Dedicated Insight View replacing Chart inside the same Card ── */
+                      <div
+                        className="w-full h-full flex flex-col min-h-0 overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* Insight Toolbar Header with Back Button */}
+                        <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200 dark:border-slate-800 shrink-0">
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleRestoreCardChart(card.id)}
+                              className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
+                              title="Return to original chart view"
+                            >
+                              <ArrowLeft className="w-3.5 h-3.5" />
+                              <span>Back</span>
+                            </button>
+                            <div className="flex items-center space-x-1 px-2 py-0.5 rounded-md bg-violet-100/80 dark:bg-violet-950/80 text-violet-700 dark:text-violet-300 text-[10px] font-extrabold">
+                              <Sparkles className="w-3 h-3 text-amber-500" />
+                              <span>AI Insights</span>
+                            </div>
+                          </div>
+
+                          {!loadingInsightsMap[card.id] && (cardInsightsMap[card.id] || card.insights) && (
+                            <button
+                              onClick={() => handleGenerateCardInsight(card, true)}
+                              className="text-[10px] text-slate-400 hover:text-violet-500 dark:hover:text-violet-400 flex items-center space-x-1 transition-colors px-1.5 py-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                              title="Regenerate insights with fresh AI analysis"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              <span>Regenerate</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Scrollable Insight Content Fitting Exactly within Card */}
+                        <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-2 text-xs custom-scrollbar">
+                          {loadingInsightsMap[card.id] ? (
+                            <div className="h-full min-h-[160px] flex flex-col items-center justify-center p-4 text-center space-y-3">
+                              <div className="p-3 bg-violet-100 dark:bg-violet-900/40 rounded-2xl text-violet-600 dark:text-violet-400 animate-pulse">
+                                <RefreshCw className="w-6 h-6 animate-spin" />
+                              </div>
+                              <div className="space-y-1 max-w-xs">
+                                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                  Generating AI Insights...
+                                </p>
+                                <p className="text-[11px] text-slate-400 leading-snug">
+                                  Analyzing patterns, trends, and strategic takeaways from {card.title} data.
+                                </p>
+                              </div>
+                            </div>
+                          ) : cardInsightErrors[card.id] ? (
+                            <div className="h-full min-h-[160px] flex flex-col items-center justify-center p-4 text-center space-y-3">
+                              <div className="p-2.5 bg-rose-100 dark:bg-rose-950/60 rounded-xl text-rose-600 dark:text-rose-400">
+                                <AlertCircle className="w-5 h-5" />
+                              </div>
+                              <p className="text-xs font-semibold text-rose-600 dark:text-rose-400 max-w-xs">
+                                {cardInsightErrors[card.id]}
+                              </p>
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => handleGenerateCardInsight(card, true)}
+                                  className="px-3 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs shadow-xs cursor-pointer"
+                                >
+                                  Retry
+                                </button>
+                                <button
+                                  onClick={() => handleRestoreCardChart(card.id)}
+                                  className="px-3 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer"
+                                >
+                                  Back to Chart
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-1">
+                              <MarkdownRenderer content={cardInsightsMap[card.id] || card.insights} />
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     ) : isLoadingData ? (
                       <div className="h-full flex items-center justify-center text-xs text-slate-400">
                         <RefreshCw className="w-5 h-5 animate-spin mr-2 text-violet-500" />
@@ -1248,16 +1747,81 @@ export default function DashboardBuilderPage() {
 
       {/* ── Floating Selected Chart Copilot Bar ────────────────────── */}
       {mode === 'edit' && selectedCard && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 dark:bg-slate-900/95 text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-violet-500/50 backdrop-blur-md flex items-center space-x-3 text-xs animate-slideUp">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 dark:bg-slate-900/95 text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-violet-500/50 backdrop-blur-md flex items-center space-x-3 text-xs animate-slideUp flex-wrap gap-y-2">
           <div className="flex items-center space-x-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-slate-400">Selected Chart:</span>
-            <strong className="text-slate-100 max-w-[180px] truncate">{selectedCard.title}</strong>
+            <strong className="text-slate-100 max-w-[160px] truncate">{selectedCard.title}</strong>
             <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-violet-900/80 text-violet-300">
               {selectedCard.chart_type}
             </span>
           </div>
-          <div className="h-4 w-px bg-slate-700" />
+
+          <div className="h-4 w-px bg-slate-700 hidden sm:block" />
+
+          {/* Movement Controls for selected card */}
+          <ChartMoveControls
+            cardId={selectedCard.id}
+            onMove={handleMoveCard}
+            canMoveUp={gridCardPositions[selectedCard.id]?.canMoveUp ?? false}
+            canMoveDown={gridCardPositions[selectedCard.id]?.canMoveDown ?? false}
+            canMoveLeft={gridCardPositions[selectedCard.id]?.canMoveLeft ?? false}
+            canMoveRight={gridCardPositions[selectedCard.id]?.canMoveRight ?? false}
+          />
+
+          {/* Width & Height text inputs for selected card */}
+          <div className="flex items-center space-x-1.5">
+            <DimensionTextInput
+              label="W"
+              value={selectedCard.custom_width || (selectedCard.width && selectedCard.width > 12 ? selectedCard.width : (selectedCard.col_span || (selectedCard.chart_type === 'Metric' ? 3 : 6)))}
+              unit={Number(selectedCard.custom_width || selectedCard.width || selectedCard.col_span || 6) > 12 ? 'px' : '/12'}
+              isWidth={true}
+              tooltip="Custom Width: freely type columns (1-12) or pixels (e.g. 150, 300, 450)"
+              placeholder="cols/px"
+              presets={[
+                { label: '1 col', val: 1 },
+                { label: '2 cols (150px)', val: 2 },
+                { label: '3 cols (300px)', val: 3 },
+                { label: '4 cols (450px)', val: 4 },
+                { label: '6 cols (Half)', val: 6 },
+                { label: '8 cols', val: 8 },
+                { label: '10 cols', val: 10 },
+                { label: '12 cols (Full)', val: 12 }
+              ]}
+              onChange={(cols, customW) => {
+                handleUpdateCard(selectedCard.id, {
+                  col_span: cols,
+                  width: customW || cols,
+                  custom_width: customW || cols
+                });
+              }}
+            />
+            <DimensionTextInput
+              label="H"
+              value={selectedCard.height || (selectedCard.chart_type === 'Metric' ? 140 : 360)}
+              unit="px"
+              isWidth={false}
+              min={80}
+              max={1600}
+              tooltip="Custom Height in pixels (e.g. 150, 300, 450)"
+              placeholder="px"
+              presets={[
+                { label: '140px (KPI)', val: 140 },
+                { label: '220px', val: 220 },
+                { label: '300px', val: 300 },
+                { label: '360px', val: 360 },
+                { label: '450px', val: 450 },
+                { label: '560px', val: 560 },
+                { label: '700px', val: 700 }
+              ]}
+              onChange={(newHeight) => {
+                handleUpdateCard(selectedCard.id, { height: newHeight });
+              }}
+            />
+          </div>
+
+          <div className="h-4 w-px bg-slate-700 hidden sm:block" />
+
           <button
             onClick={() => openAskAiModal(selectedCard)}
             className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold flex items-center space-x-1.5 shadow-md shadow-violet-500/25 transition-all cursor-pointer"
@@ -1267,7 +1831,7 @@ export default function DashboardBuilderPage() {
           </button>
           <button
             onClick={() => setSelectedCardId(null)}
-            className="p-1 rounded-lg text-slate-400 hover:text-white transition-colors"
+            className="p-1 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
             title="Deselect Chart"
           >
             <X className="w-3.5 h-3.5" />

@@ -465,7 +465,7 @@ ORDER BY gross_profit DESC;""",
                     ]
                 }]
             }),
-            "insights": "Aerospace leads overall profitability with 46.2% gross margin and $482k net contribution, driven by strong pricing power on Titanium Turbine Rotors. Industrial components yield high volume but compressed margins (28.4%).",
+            "insights": "Aerospace leads overall profitability with 46.2% gross margin and ₹48.2 Lakh net contribution, driven by strong pricing power on Titanium Turbine Rotors. Industrial components yield high volume but compressed margins (28.4%).",
             "database_name": "Apex_Precision_Manufacturing_Corp",
             "model_used": "llama-3.3-70b-versatile",
             "is_favorite": True,
@@ -496,7 +496,7 @@ ORDER BY total_downtime_hours DESC;""",
                     {"name": "Defects Produced", "type": "bar", "data": [112, 94, 78, 62], "itemStyle": {"color": "#f97316"}}
                 ]
             }),
-            "insights": "Strong positive correlation observed between downtime on CNC-Mill-01 and thermal tooling defects. Initiating preventative spindle overhaul on CNC-Mill-01 will reduce scrap by an estimated $18,400 monthly.",
+            "insights": "Strong positive correlation observed between downtime on CNC-Mill-01 and thermal tooling defects. Initiating preventative spindle overhaul on CNC-Mill-01 will reduce scrap by an estimated ₹1.84 Lakh monthly.",
             "database_name": "Apex_Precision_Manufacturing_Corp",
             "model_used": "llama-3.3-70b-versatile",
             "is_favorite": False,
@@ -521,7 +521,7 @@ ORDER BY total_revenue DESC;""",
             "rows_count": 8,
             "chart_type": "scatter",
             "chart_config": json.dumps({
-                "xAxis": {"name": "Avg Selling Price ($)", "type": "value"},
+                "xAxis": {"name": "Avg Selling Price (₹)", "type": "value"},
                 "yAxis": {"name": "Units Demanded", "type": "value"},
                 "series": [{
                     "type": "scatter",

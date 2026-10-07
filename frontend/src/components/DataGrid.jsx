@@ -7,24 +7,45 @@ import { Copy, Download, Search, Check } from 'lucide-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
 
-export default function DataGrid({ columns = [], rows = [] }) {
+export default function DataGrid({ columns = [], rows = [], columnTypes = {} }) {
   const { theme } = useChatStore();
   const gridRef = useRef();
   const [quickFilterText, setQuickFilterText] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Map database columns to AG Grid column definitions
+  // Map database columns to AG Grid column definitions without altering raw formatting or stripping spaces
   const columnDefs = useMemo(() => {
-    return columns.map(col => ({
-      field: col,
-      headerName: col.replace(/_/g, ' ').toUpperCase(),
-      sortable: true,
-      filter: true,
-      resizable: true,
-      minWidth: 120,
-      flex: 1
-    }));
-  }, [columns]);
+    return columns.map(col => {
+      const rawType = columnTypes?.[col] || '';
+      const typeBadgeMap = {
+        text: 'TEXT',
+        numerical: 'NUM',
+        datetime: 'DATE',
+        boolean: 'BOOL',
+        categorical: 'CAT'
+      };
+      const badge = rawType ? (typeBadgeMap[rawType.toLowerCase()] || rawType.toUpperCase()) : '';
+
+      return {
+        field: col,
+        headerName: badge
+          ? `${col.replace(/_/g, ' ').toUpperCase()} • ${badge}`
+          : col.replace(/_/g, ' ').toUpperCase(),
+        headerTooltip: rawType ? `Column: ${col} | Type: ${rawType}` : `Column: ${col}`,
+        sortable: true,
+        filter: true,
+        resizable: true,
+        minWidth: 130,
+        flex: 1,
+        cellStyle: { whiteSpace: 'pre-wrap' },
+        valueFormatter: (params) => {
+          const val = params.value;
+          if (val === null || val === undefined) return '';
+          return val;
+        }
+      };
+    });
+  }, [columns, columnTypes]);
 
   // Set grid options
   const defaultColDef = useMemo(() => ({

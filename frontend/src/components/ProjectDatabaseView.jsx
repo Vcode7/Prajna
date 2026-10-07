@@ -7,7 +7,7 @@ import {
   Database, Upload, Table, Sparkles, Filter, Sliders,
   Download, RefreshCw, AlertTriangle, CheckCircle2, Play,
   Send, Trash2, Edit3, Plus, ArrowRight, Terminal, HelpCircle, Layers,
-  Wand2, X, Check
+  Wand2, X, Check, FileSpreadsheet, FileDown, Hash, Type, Calendar, CheckSquare, Info
 } from 'lucide-react';
 
 export default function ProjectDatabaseView() {
@@ -18,9 +18,10 @@ export default function ProjectDatabaseView() {
 
   const [previewData, setPreviewData] = useState(null);
   const [loadingData, setLoadingData] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [showUploadForm, setShowUploadForm] = useState(false);
   const [switchingSheet, setSwitchingSheet] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -51,6 +52,52 @@ export default function ProjectDatabaseView() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef(null);
+
+  const [exportingCol, setExportingCol] = useState(null);
+
+  // Fix Data Formatting state
+  const [fixFmtConfirmOpen, setFixFmtConfirmOpen] = useState(false);
+  const [fixFmtLoading, setFixFmtLoading] = useState(false);
+  const [fixFmtResult, setFixFmtResult] = useState(null);
+
+  const handleFixFormatting = async () => {
+    setFixFmtConfirmOpen(false);
+    setFixFmtLoading(true);
+    setFixFmtResult(null);
+    try {
+      const result = await api.fixDatasetFormatting(activeProjectId);
+      setFixFmtResult(result);
+      // Refresh project metadata & preview after cleaning
+      await loadFullProjectDetails(activeProjectId);
+      await loadPreview(activeProjectId);
+    } catch (err) {
+      setFixFmtResult({ status: 'error', message: err.message || 'Fix formatting failed.' });
+    } finally {
+      setFixFmtLoading(false);
+    }
+  };
+
+  // Export unique values of a column as plain CSV — fetches full dataset from backend
+  const exportUniqueValues = async (colName) => {
+    setExportingCol(colName);
+    try {
+      const result = await api.getColumnUniqueValues(activeProjectId, colName);
+      const values = result?.values || [];
+      const csvContent = [colName, ...values.map(v => `"${String(v).replace(/"/g, '""""')}"`)].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${colName}_unique_values.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export unique values failed:', err);
+      alert(`Failed to export unique values for "${colName}": ${err.message}`);
+    } finally {
+      setExportingCol(null);
+    }
+  };
 
   useEffect(() => {
     if (activeProjectId) {
@@ -91,17 +138,61 @@ export default function ProjectDatabaseView() {
     }
   };
 
+  const isSupportedFile = (file) => {
+    const n = file.name.toLowerCase();
+    return n.endsWith('.csv') || n.endsWith('.xlsx') || n.endsWith('.xls');
+  };
+
+  const handleFileDrop = (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const incoming = Array.from(e.dataTransfer.files).filter(isSupportedFile);
+      if (incoming.length > 0) {
+        setSelectedFiles(prev => {
+          const existingNames = new Set(prev.map(f => f.name));
+          const newFiles = incoming.filter(f => !existingNames.has(f.name));
+          return [...prev, ...newFiles];
+        });
+        setUploadError('');
+      } else {
+        setUploadError('Please upload valid .csv, .xlsx, or .xls files.');
+      }
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const incoming = Array.from(e.target.files).filter(isSupportedFile);
+      if (incoming.length > 0) {
+        setSelectedFiles(prev => {
+          const existingNames = new Set(prev.map(f => f.name));
+          const newFiles = incoming.filter(f => !existingNames.has(f.name));
+          return [...prev, ...newFiles];
+        });
+        setUploadError('');
+      } else {
+        setUploadError('Please upload valid .csv, .xlsx, or .xls files.');
+      }
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleRemoveFile = (fileName) => {
+    setSelectedFiles(prev => prev.filter(f => f.name !== fileName));
+  };
+
   const handleUploadCSV = async (e) => {
     e.preventDefault();
-    if (!selectedFile || !activeProjectId) return;
+    if (!selectedFiles || selectedFiles.length === 0 || !activeProjectId) return;
 
     setUploading(true);
     setUploadError('');
     try {
-      await api.uploadDataset(selectedFile, activeProject?.name || undefined, activeProjectId);
+      await api.uploadDataset(selectedFiles, activeProject?.name || undefined, activeProjectId);
       await refreshProjectTree();
       await loadPreview(activeProjectId);
-      setSelectedFile(null);
+      setSelectedFiles([]);
+      setShowUploadForm(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
       setUploadError(err.message || 'Upload failed');
@@ -279,6 +370,17 @@ export default function ProjectDatabaseView() {
 
         <div className="flex items-center space-x-2">
           {activeProject.has_data && (
+            <button
+              onClick={() => setShowUploadForm(prev => !prev)}
+              className="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer"
+              title="Upload new dataset or add multiple files as sheets"
+            >
+              <Upload className="w-3.5 h-3.5 text-violet-500" />
+              <span>{showUploadForm ? 'Hide Upload' : 'Upload Files / Sheets'}</span>
+            </button>
+          )}
+
+          {activeProject.has_data && (
             <a
               href={api.exportDatasetUrl(activeProject.id)}
               download
@@ -299,48 +401,125 @@ export default function ProjectDatabaseView() {
         </div>
       </div>
 
-      {/* ── CSV Upload Area (if no data yet or to replace) ─────── */}
-      {(!activeProject.has_data || previewData?.rows?.length === 0) && (
-        <div className="p-8 rounded-3xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 text-center space-y-4">
+      {/* ── Dataset Upload Area (if no data yet or user toggled upload) ─────── */}
+      {(!activeProject.has_data || previewData?.rows?.length === 0 || showUploadForm) && (
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleFileDrop}
+          className="p-8 rounded-3xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 text-center space-y-4"
+        >
           <div className="mx-auto w-12 h-12 rounded-2xl bg-violet-500/10 text-violet-500 flex items-center justify-center">
             <Upload className="w-6 h-6" />
           </div>
           <div>
             <h3 className="text-sm font-bold">Upload Dataset for {activeProject.name}</h3>
-            <p className="text-xs text-slate-400 mt-1">Upload a CSV or Excel (.xlsx/.xls) file to initialize this project's database.</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Upload multiple CSV or Excel files at once — each file will be loaded as an individual sheet.
+            </p>
           </div>
 
-          <form onSubmit={handleUploadCSV} className="max-w-md mx-auto space-y-3">
+          <form onSubmit={handleUploadCSV} className="max-w-xl mx-auto space-y-3">
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               accept=".csv, .xlsx, .xls"
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  setSelectedFile(e.target.files[0]);
-                  setUploadError('');
-                }
-              }}
+              onChange={handleFileSelect}
               className="hidden"
               id="proj-csv-file"
             />
             
-            <label
-              htmlFor="proj-csv-file"
-              className="inline-block cursor-pointer px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold transition-colors"
-            >
-              {selectedFile ? selectedFile.name : 'Select CSV or Excel (.xlsx) File'}
-            </label>
+            {selectedFiles.length === 0 ? (
+              <div className="flex items-center justify-center">
+                <label
+                  htmlFor="proj-csv-file"
+                  className="cursor-pointer px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold transition-colors flex items-center space-x-2 shadow-2xs hover:scale-[1.01]"
+                >
+                  <Upload className="w-4 h-4 text-violet-500" />
+                  <span>Select Files (Multiple CSV / Excel Allowed)</span>
+                </label>
+              </div>
+            ) : (
+              <div className="space-y-3 text-left">
+                {/* Header count */}
+                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
+                  <span className="font-semibold text-violet-600 dark:text-violet-400">
+                    {selectedFiles.length} {selectedFiles.length === 1 ? 'file' : 'files'} selected {selectedFiles.length > 1 ? '(loaded as separate sheets)' : ''}
+                  </span>
+                  <div className="flex items-center space-x-2">
+                    <label
+                      htmlFor="proj-csv-file"
+                      className="inline-flex items-center space-x-1 text-[11px] font-bold text-violet-600 dark:text-violet-400 hover:underline cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Add more</span>
+                    </label>
+                    <span>•</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFiles([])}
+                      className="text-[11px] text-slate-400 hover:text-rose-500 transition-colors"
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                </div>
 
-            {selectedFile && (
-              <button
-                type="submit"
-                disabled={uploading}
-                className="w-full py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-md disabled:opacity-50"
-              >
-                {uploading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                <span>Upload & Parse Data</span>
-              </button>
+                {/* Selected Files List Chips */}
+                <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1.5 rounded-2xl bg-slate-100/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 custom-scrollbar">
+                  {selectedFiles.map((file) => {
+                    const sheetName = file.name.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
+                    return (
+                      <div
+                        key={file.name}
+                        className="inline-flex items-center space-x-2 px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs shadow-2xs"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                        <span className="font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[160px]">
+                          {file.name}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {(file.size / 1024).toFixed(0)} KB
+                        </span>
+                        {selectedFiles.length > 1 && (
+                          <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-950 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800">
+                            Sheet: {sheetName.length > 16 ? sheetName.substring(0, 16) + '...' : sheetName}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFile(file.name)}
+                          className="p-0.5 rounded-full text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                          title={`Remove ${file.name}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Submit button */}
+                <button
+                  type="submit"
+                  disabled={uploading}
+                  className="w-full py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-md disabled:opacity-50 cursor-pointer"
+                >
+                  {uploading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Processing & Packaging Sheets...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      <span>
+                        Upload & Parse {selectedFiles.length > 1 ? `${selectedFiles.length} Files as Sheets` : 'Data'}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
             )}
 
             {uploadError && (
@@ -440,7 +619,7 @@ export default function ProjectDatabaseView() {
                 </div>
               ) : previewData ? (
                 <div className="h-[460px] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800">
-                  <DataGrid columns={previewData.columns} rows={previewData.rows} />
+                  <DataGrid columns={previewData.columns} rows={previewData.rows} columnTypes={previewData.column_types} />
                 </div>
               ) : null}
             </div>
@@ -449,6 +628,26 @@ export default function ProjectDatabaseView() {
           {/* ── Sub-Tab 2: Schema & Quality ──────────────────────── */}
           {databaseSubTab === 'schema' && (
             <div className="space-y-6 animate-fadeIn">
+              {/* Mixed Number+Text Auto-Conversion Notice */}
+              {dataQuality.converted_mixed_columns && dataQuality.converted_mixed_columns.length > 0 && (
+                <div className="p-4 rounded-2xl bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800/60 text-teal-800 dark:text-teal-300 space-y-2 text-xs">
+                  <div className="flex items-center space-x-2 font-bold">
+                    <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+                    <span>Mixed Number &amp; Text Fields Auto-Converted to Text</span>
+                  </div>
+                  <p className="text-[11px] opacity-90 leading-relaxed">
+                    Identified {dataQuality.converted_mixed_columns.length} column{dataQuality.converted_mixed_columns.length === 1 ? '' : 's'} containing both numbers and text. Their data types were automatically converted to <strong className="font-mono">Text</strong> to prevent type mismatches during queries and calculations:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {dataQuality.converted_mixed_columns.map(c => (
+                      <span key={c} className="px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold bg-teal-100 dark:bg-teal-900/40 text-teal-800 dark:text-teal-200 border border-teal-300 dark:border-teal-700/60">
+                        {c} → TEXT
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {dataQuality.has_warnings && (
                 <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 space-y-1.5 text-xs">
                   <div className="flex items-center space-x-2 font-bold">
@@ -462,38 +661,152 @@ export default function ProjectDatabaseView() {
               )}
 
               <div className="p-5 rounded-3xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-                <h3 className="text-sm font-bold">Columns & Schema Breakdown</h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Columns &amp; Schema Breakdown</h3>
+                    <p className="text-[11px] text-slate-400">View column data types, SQL storage types, unique counts, null percentages, and statistical distributions.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFixFmtConfirmOpen(true)}
+                    disabled={fixFmtLoading || !activeProjectId}
+                    className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white shadow-sm transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed shrink-0 cursor-pointer"
+                    title="Scan dataset for invisible/control characters (tabs, line breaks, etc.) and clean them"
+                  >
+                    {fixFmtLoading ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Fixing Data Formatting...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Fix Data Formatting</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Fix Data Formatting Result Notification */}
+                {fixFmtResult && (
+                  <div className={`p-4 rounded-2xl border text-xs flex items-start justify-between gap-3 transition-all ${
+                    fixFmtResult.status === 'error'
+                      ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800/60 text-rose-800 dark:text-rose-200'
+                      : fixFmtResult.total_cells_cleaned > 0
+                        ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-200'
+                        : 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/60 text-blue-800 dark:text-blue-200'
+                  }`}>
+                    <div className="space-y-1.5 flex-1">
+                      <div className="flex items-center space-x-2 font-bold">
+                        {fixFmtResult.status === 'error' ? (
+                          <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                        ) : (
+                          <CheckCircle2 className={`w-4 h-4 shrink-0 ${fixFmtResult.total_cells_cleaned > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}`} />
+                        )}
+                        <span>
+                          {fixFmtResult.status === 'error'
+                            ? 'Fix Formatting Error'
+                            : fixFmtResult.total_cells_cleaned > 0
+                              ? `Cleaned ${fixFmtResult.total_cells_cleaned} Cell${fixFmtResult.total_cells_cleaned === 1 ? '' : 's'} across ${Object.keys(fixFmtResult.affected_columns || {}).length} Column${Object.keys(fixFmtResult.affected_columns || {}).length === 1 ? '' : 's'}`
+                              : 'Scan Complete: Data is Clean'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] opacity-90 leading-relaxed">
+                        {fixFmtResult.message}
+                      </p>
+                      {fixFmtResult.affected_columns && Object.keys(fixFmtResult.affected_columns).length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {Object.entries(fixFmtResult.affected_columns).map(([colName, cnt]) => (
+                            <span
+                              key={colName}
+                              className="px-2 py-0.5 rounded-lg text-[10px] font-mono font-semibold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700/60"
+                            >
+                              {colName}: {cnt} cell{cnt === 1 ? '' : 's'}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFixFmtResult(null)}
+                      className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-slate-500 cursor-pointer"
+                      title="Dismiss"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left border-collapse">
                     <thead>
                       <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
                         <th className="py-2.5 px-3">Column</th>
-                        <th className="py-2.5 px-3">Type</th>
+                        <th className="py-2.5 px-3">Data Type</th>
+                        <th className="py-2.5 px-3">Database Type</th>
                         <th className="py-2.5 px-3">Unique</th>
                         <th className="py-2.5 px-3">Null %</th>
                         <th className="py-2.5 px-3">Statistics / Samples</th>
+                        <th className="py-2.5 px-3">Export</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                       {availableColumns.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="py-8 text-center text-slate-400">
+                          <td colSpan={7} className="py-8 text-center text-slate-400">
                             {loadingData ? 'Loading schema metadata...' : 'No columns found for this dataset.'}
                           </td>
                         </tr>
                       ) : (
                         availableColumns.map((col) => {
                           const m = colMeta[col] || {};
-                          const detectedType = m.data_type || previewData?.column_types?.[col] || 'string';
+                          const detectedType = m.data_type || previewData?.column_types?.[col] || 'text';
+                          const sqlType = m.sql_type || (previewData?.sql_types?.[col]) || (detectedType === 'numerical' ? 'REAL' : detectedType === 'boolean' ? 'BOOLEAN' : detectedType === 'datetime' ? 'DATETIME' : 'TEXT');
+                          const isMixedConverted = m.converted_to_text || m.has_mixed_types || (previewData?.mixed_columns?.includes(col)) || (dataQuality?.converted_mixed_columns?.includes(col));
+
+                          // Icon and badge style based on data type
+                          let TypeIcon = Type;
+                          let badgeClass = 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800/60';
+                          
+                          if (detectedType === 'numerical') {
+                            TypeIcon = Hash;
+                            badgeClass = 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800/60';
+                          } else if (detectedType === 'datetime') {
+                            TypeIcon = Calendar;
+                            badgeClass = 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800/60';
+                          } else if (detectedType === 'boolean') {
+                            TypeIcon = CheckSquare;
+                            badgeClass = 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800/60';
+                          } else if (detectedType === 'categorical') {
+                            TypeIcon = Layers;
+                            badgeClass = 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800/60';
+                          }
+
                           return (
                             <tr key={col} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                              <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-200">{col}</td>
+                              <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-200">
+                                <div className="flex items-center space-x-1.5 min-w-0">
+                                  <TypeIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                  <span className="font-mono text-xs truncate">{col}</span>
+                                  {isMixedConverted && (
+                                    <span
+                                      className="px-1.5 py-0.2 rounded text-[8px] font-extrabold uppercase bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800/60 shadow-2xs shrink-0"
+                                      title="Column contained both numbers and text; automatically identified and converted data type to Text"
+                                    >
+                                      Mixed → Text
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                               <td className="py-2.5 px-3">
-                                <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
-                                  detectedType === 'numerical' ? 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400' : 'bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
-                                }`}>
+                                <span className={`text-[9px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border shadow-2xs ${badgeClass}`}>
                                   {detectedType}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className="px-2 py-0.5 rounded font-mono text-[10px] font-semibold bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/80">
+                                  {sqlType}
                                 </span>
                               </td>
                               <td className="py-2.5 px-3 font-mono">{m.unique_count ?? (previewData?.rows ? new Set(previewData.rows.map(r => r[col])).size : '—')}</td>
@@ -508,6 +821,21 @@ export default function ProjectDatabaseView() {
                                 ) : (
                                   <span>—</span>
                                 )}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <button
+                                  onClick={() => exportUniqueValues(col)}
+                                  disabled={exportingCol === col}
+                                  title={`Export all unique values of "${col}" as CSV`}
+                                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-800/60 hover:bg-violet-100 dark:hover:bg-violet-900/60 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                                >
+                                  {exportingCol === col ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <FileDown className="w-3 h-3" />
+                                  )}
+                                  {exportingCol === col ? '...' : 'CSV'}
+                                </button>
                               </td>
                             </tr>
                           );
@@ -681,10 +1009,46 @@ export default function ProjectDatabaseView() {
           {/* ── Sub-Tab 4: SQL Query ─────────────────────────────── */}
           {databaseSubTab === 'query' && (
             <div className="p-6 rounded-3xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 shadow-sm space-y-4 animate-fadeIn text-xs">
-              <h3 className="text-sm font-bold flex items-center space-x-2">
-                <Terminal className="w-4 h-4 text-violet-500" />
-                <span>Interactive SQL Query Runner (Table: `dataset`)</span>
-              </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h3 className="text-sm font-bold flex items-center space-x-2">
+                  <Terminal className="w-4 h-4 text-violet-500" />
+                  <span>Interactive SQL Query Runner (Table: `dataset`)</span>
+                </h3>
+              </div>
+
+              {/* Schema Column Types Quick-Reference Strip */}
+              {availableColumns.length > 0 && (
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-semibold">
+                    <div className="flex items-center space-x-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-violet-500" />
+                      <span>Schema &amp; Column Data Types:</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-mono">{availableColumns.length} Columns</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto custom-scrollbar pt-1">
+                    {availableColumns.map((c) => {
+                      const m = colMeta[c] || {};
+                      const dtype = m.data_type || previewData?.column_types?.[c] || 'text';
+                      const stype = m.sql_type || previewData?.sql_types?.[c] || (dtype === 'numerical' ? 'REAL' : 'TEXT');
+                      const isMixed = m.converted_to_text || m.has_mixed_types || (previewData?.mixed_columns?.includes(c));
+                      return (
+                        <span
+                          key={c}
+                          className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-lg text-[10px] font-mono bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
+                          title={`${c}: ${dtype} (${stype})${isMixed ? ' - Mixed types converted to Text' : ''}`}
+                        >
+                          <strong className="text-violet-600 dark:text-violet-400">{c}</strong>
+                          <span className="text-[9px] uppercase font-bold text-slate-400 font-sans">:{stype}</span>
+                          {isMixed && (
+                            <span className="text-[8px] font-bold text-amber-600 dark:text-amber-400">★mixed</span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <form onSubmit={handleRunQuery} className="space-y-3">
                 <textarea
@@ -951,6 +1315,78 @@ export default function ProjectDatabaseView() {
             </div>
           )}
 
+        </div>
+      )}
+
+      {/* ── Fix Data Formatting Confirmation Modal ──────────────── */}
+      {fixFmtConfirmOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white dark:bg-[#111827] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-lg w-full p-6 space-y-5 animate-scaleUp">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-3 rounded-2xl bg-violet-100 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Fix Data Formatting</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Scan and normalize invisible characters</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFixFmtConfirmOpen(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-800/80">
+              <p className="font-semibold text-slate-800 dark:text-slate-200">
+                This operation scans all text/string columns in this dataset and safely cleans invisible characters:
+              </p>
+              <ul className="space-y-2 list-disc list-inside text-slate-500 dark:text-slate-400">
+                <li>
+                  <span className="font-medium text-slate-700 dark:text-slate-300">Removes invisible control characters</span> such as tabs, carriage returns, line breaks, zero-width characters, and non-printable control codes that cause identical values to be treated as different.
+                </li>
+                <li>
+                  <span className="font-medium text-slate-700 dark:text-slate-300">Preserves normal spaces</span> (including spaces inside values), numbers, text, symbols, hyphens, and punctuation without altering visible formatting.
+                </li>
+                <li>
+                  <span className="font-medium text-slate-700 dark:text-slate-300">Synchronizes SQLite & schema metadata</span> so duplicate values caused only by control characters are recognized as identical.
+                </li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setFixFmtConfirmOpen(false)}
+                disabled={fixFmtLoading}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleFixFormatting}
+                disabled={fixFmtLoading}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white shadow-md shadow-violet-500/20 flex items-center space-x-2 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {fixFmtLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Cleaning Dataset...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Confirm & Fix Formatting</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

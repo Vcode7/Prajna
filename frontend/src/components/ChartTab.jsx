@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import { useChatStore } from '../store/chatStore';
-import { Download, Maximize2, Minimize2, BarChart2, TrendingUp, PieChart, Layers } from 'lucide-react';
+import { Download, Maximize2, Minimize2, BarChart2 } from 'lucide-react';
+import { resolveThemeTemplate } from '../constants/dashboardThemes';
 
 const CHART_TYPES = [
   'Bar', 'Horizontal Bar', 'Line', 'Area', 'Pie', 'Donut',
@@ -25,7 +26,166 @@ const parseNum = (val) => {
   }
   return 0;
 };
-import { resolveThemeTemplate } from '../constants/dashboardThemes';
+
+// Detect if a metric or title represents financial data
+const isFinancialMetric = (str) => {
+  if (!str) return false;
+  return /revenue|sales|price|cost|profit|amount|budget|salary|spend|rupee|inr|income|expense|margin|valuation/i.test(String(str));
+};
+
+// Compact number formatting using Indian numbering metrics (Cr, L, K) with optional Rupee (₹) prefix
+const formatCompactNumber = (val, isCurrency = false) => {
+  if (val === null || val === undefined) return '';
+  const num = typeof val === 'number' ? val : Number(val);
+  if (isNaN(num)) return String(val);
+  const prefix = isCurrency ? '₹' : '';
+  const abs = Math.abs(num);
+  const sign = num < 0 ? '-' : '';
+
+  if (abs >= 1e7) {
+    const cr = (abs / 1e7).toFixed(2).replace(/\.?0+$/, '');
+    return `${sign}${prefix}${cr} Cr`;
+  }
+  if (abs >= 1e5) {
+    const lk = (abs / 1e5).toFixed(2).replace(/\.?0+$/, '');
+    return `${sign}${prefix}${lk} L`;
+  }
+  if (abs >= 1e3) {
+    const k = (abs / 1e3).toFixed(1).replace(/\.?0+$/, '');
+    return `${sign}${prefix}${k} K`;
+  }
+  if (Number.isInteger(num)) {
+    return `${sign}${prefix}${Math.abs(num).toLocaleString('en-IN')}`;
+  }
+  return `${sign}${prefix}${Math.abs(num).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+};
+
+// Full precision formatting with Indian numbering separators (en-IN) and optional Rupee (₹) prefix
+const formatFullNumber = (val, isCurrency = false) => {
+  if (val === null || val === undefined) return isCurrency ? '₹0' : '0';
+  const num = typeof val === 'number' ? val : Number(val);
+  if (isNaN(num)) return String(val);
+  const prefix = isCurrency ? '₹' : '';
+  const sign = num < 0 ? '-' : '';
+  return `${sign}${prefix}${Math.abs(num).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+};
+
+// Calculate optimal chart height based on label lengths, rotation, density, and chart type
+export const calculateChartHeight = (chartConfig = {}, rows = [], columns = [], overrideType = null) => {
+  if (!rows || rows.length === 0) return 280;
+
+  const type = overrideType || chartConfig?.chart_type || 'Bar';
+  if (type === 'Metric') return 240;
+
+  const count = rows.length;
+  const xKey = chartConfig?.x_axis || chartConfig?.x_variable || (columns.length > 0 ? columns[0] : '');
+
+  // Horizontal Bar: Height scales proportionally with category count and spacing
+  if (type === 'Horizontal Bar') {
+    return Math.max(320, Math.min(700, count * 36 + 80));
+  }
+
+  // Scan category / X labels to find length distribution
+  let maxLabelLen = 0;
+  let totalLen = 0;
+  for (let i = 0; i < count; i++) {
+    const val = rows[i]?.[xKey];
+    const s = String(val ?? '');
+    if (s.length > maxLabelLen) maxLabelLen = s.length;
+    totalLen += s.length;
+  }
+  const avgLabelLen = count > 0 ? totalLen / count : 0;
+
+  // Pie / Donut
+  if (['Pie', 'Donut'].includes(type)) {
+    if (count > 8 || maxLabelLen > 16) return 380;
+    return 330;
+  }
+
+  // Treemap
+  if (type === 'Treemap') {
+    return 340;
+  }
+
+  // Cartesian charts: Bar, Stacked Bar, Line, Area, Stacked Area, Scatter
+  // When labels are long, rotated labels consume significant vertical space.
+  // We allocate generous height so the chart plotting area remains large and readable.
+  let labelSpace = 50; // base for short labels
+  if (maxLabelLen >= 26 || avgLabelLen >= 20) {
+    labelSpace = 190; // very long labels (26+ chars)
+  } else if (maxLabelLen >= 15 || avgLabelLen >= 11) {
+    labelSpace = 140; // long labels (15-25 chars)
+  } else if (maxLabelLen >= 8 || count > 6) {
+    labelSpace = 90; // medium labels or rotated (8-14 chars)
+  }
+
+  // Extra space for slider dataZoom when dense data
+  const sliderSpace = count > 10 ? 24 : 0;
+
+  // Extra space for legend when multiple series
+  const seriesConfigs = chartConfig?.series || [];
+  const hasMultipleSeries = seriesConfigs.length > 1;
+  const legendSpace = hasMultipleSeries ? 24 : 0;
+
+  // Base plotting space (at least 240px of clear plotting area for the bars/lines)
+  const basePlotSpace = 240;
+  const topHeaderSpace = 46;
+
+  const total = basePlotSpace + topHeaderSpace + labelSpace + sliderSpace + legendSpace;
+  return Math.min(580, Math.max(320, total));
+};
+
+// Rich glassmorphism HTML tooltip generator
+const renderTooltipHtml = (params, isDarkTheme, isChartFinancial = false) => {
+  if (!params) return '';
+  const items = Array.isArray(params) ? params : [params];
+  if (items.length === 0) return '';
+
+  const first = items[0];
+  const headerTitle = first.axisValueLabel || (first.data && typeof first.data === 'object' && first.data.name) || first.name || '';
+  const textMain = isDarkTheme ? '#f8fafc' : '#0f172a';
+  const textMuted = isDarkTheme ? '#94a3b8' : '#64748b';
+  const borderCol = isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)';
+
+  const rows = items.map(item => {
+    let rawVal = item.value;
+    if (Array.isArray(rawVal)) {
+      rawVal = rawVal[1] !== undefined ? rawVal[1] : rawVal[0];
+    } else if (typeof rawVal === 'object' && rawVal !== null) {
+      rawVal = rawVal.value;
+    }
+    if (rawVal === null || rawVal === undefined) return '';
+
+    const color = item.color || '#6366f1';
+    const seriesName = formatTitle(item.seriesName || 'Value');
+    const isCurrency = isChartFinancial || isFinancialMetric(seriesName) || isFinancialMetric(item.seriesName);
+    const displayVal = formatFullNumber(rawVal, isCurrency);
+    const percentStr = item.percent !== undefined ? ` (${item.percent}%)` : '';
+
+    return `
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 5px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden;">
+          <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0; box-shadow: 0 0 5px ${color}60;"></span>
+          <span style="color: ${textMuted}; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">${seriesName}</span>
+        </div>
+        <div style="font-weight: 700; color: ${textMain}; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: nowrap;">
+          ${displayVal}${percentStr}
+        </div>
+      </div>
+    `;
+  }).filter(Boolean).join('');
+
+  return `
+    <div style="font-family: Inter, system-ui, -apple-system, sans-serif; min-width: 140px; max-width: 290px;">
+      ${headerTitle ? `
+        <div style="font-weight: 600; font-size: 11.5px; color: ${textMain}; border-bottom: 1px solid ${borderCol}; padding-bottom: 4px; margin-bottom: 3px; word-break: break-word;">
+          ${headerTitle}
+        </div>
+      ` : ''}
+      ${rows}
+    </div>
+  `;
+};
 
 // Normalizes arbitrary type strings to canonical ECharts types
 const normalizeChartType = (t) => {
@@ -42,7 +202,10 @@ export default function ChartTab({
   dashboardTheme = null,
   themeTemplate = null,
   colorMode = null,
-  customAccent = null
+  customAccent = null,
+  option = null,
+  style = {},
+  className = ''
 }) {
   const { theme } = useChatStore();
   const effectiveTheme = colorMode || theme || 'dark';
@@ -62,7 +225,7 @@ export default function ChartTab({
     }
   }, [chartConfig]);
 
-  // Handle Resize
+  // Handle Resize smoothly
   useEffect(() => {
     if (!chartInstance) return;
     const resizeObserver = new ResizeObserver(() => {
@@ -73,42 +236,14 @@ export default function ChartTab({
     if (containerRef.current) {
       resizeObserver.observe(containerRef.current);
     }
+    if (chartRef.current) {
+      resizeObserver.observe(chartRef.current);
+    }
     return () => {
       resizeObserver.disconnect();
     };
   }, [chartInstance]);
 
-  // Setup ECharts instance
-  useEffect(() => {
-    if (!chartRef.current || rows.length === 0) return;
-
-    // Dispose existing instance on DOM element if present
-    const existing = echarts.getInstanceByDom(chartRef.current);
-    if (existing && !existing.isDisposed()) {
-      existing.dispose();
-    }
-
-    let chart = null;
-    try {
-      chart = echarts.init(chartRef.current, effectiveTheme === 'dark' ? 'dark' : null);
-      setChartInstance(chart);
-
-      const option = getChartOption(selectedType, chartConfig, rows, columns, effectiveTheme, themePalette, template, customAccent);
-      if (option && !chart.isDisposed()) {
-        chart.setOption(option, true);
-      }
-    } catch (err) {
-      console.error('Error rendering chart:', err);
-    }
-
-    return () => {
-      if (chart && !chart.isDisposed()) {
-        chart.dispose();
-      }
-    };
-  }, [selectedType, chartConfig, rows, columns, effectiveTheme, themePalette, dashboardTheme, themeTemplate, customAccent]);
-
-  // Build the option map based on chart type and datasets
   // Build the option map based on chart type and datasets
   const getChartOption = (type, config, data, cols, activeTheme, customPalette, templateObj, accentColor) => {
     try {
@@ -127,14 +262,15 @@ export default function ChartTab({
       const secondaryTextColor = modeTokens?.text?.secondary || (activeTheme === 'dark' ? '#cbd5e1' : '#475569');
       const surfaceColor = modeTokens?.surface || (activeTheme === 'dark' ? '#101426' : '#ffffff');
       const borderColor = modeTokens?.border || (activeTheme === 'dark' ? '#1e293b' : '#e2e8f0');
-      const splitLineColor = activeTheme === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)';
+      const splitLineColor = activeTheme === 'dark' ? 'rgba(255, 255, 255, 0.07)' : 'rgba(0, 0, 0, 0.06)';
 
-      // Fallback if series is empty
+      // Resolve active series with support for y_axis or y_variable
       let activeSeries = seriesConfigs;
       if (!activeSeries || activeSeries.length === 0) {
         const nonXCols = cols.filter(c => c !== xKey);
-        const validY = (config.y_axis && config.y_axis !== xKey && cols.includes(config.y_axis))
-          ? config.y_axis
+        const yCandidate = config.y_axis || config.y_variable;
+        const validY = (yCandidate && yCandidate !== xKey && cols.includes(yCandidate))
+          ? yCandidate
           : null;
 
         if (validY) {
@@ -149,55 +285,65 @@ export default function ChartTab({
         }
       }
 
-      const textStyle = {
-        color: secondaryTextColor,
-        fontFamily: 'Inter, sans-serif'
-      };
-
       const hasMultipleSeries = activeSeries.length > 1;
 
-      // Base properties
+      // Determine if chart visualizes financial / currency metrics
+      const isChartFinancial = isFinancialMetric(titleText) ||
+        isFinancialMetric(config.y_axis) ||
+        isFinancialMetric(config.y_variable) ||
+        activeSeries.some(s => isFinancialMetric(s.name) || isFinancialMetric(s.data_key));
+
+      // Base properties with enhanced typography, glassmorphism tooltips, and responsive layout
       const baseOption = {
         color: resolvedPalette,
         title: {
           text: titleText,
           textStyle: {
             color: primaryTextColor,
-            fontFamily: 'Inter, sans-serif',
-            fontSize: 14,
+            fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+            fontSize: 13,
             fontWeight: 600
           },
           left: 'center',
-          top: 5
+          top: 6
         },
         tooltip: {
           trigger: ['Pie', 'Donut', 'Treemap', 'Metric'].includes(type) ? 'item' : 'axis',
-          axisPointer: { type: 'shadow' },
-          backgroundColor: surfaceColor,
-          borderColor: borderColor,
+          confine: true,
+          axisPointer: {
+            type: type === 'Horizontal Bar' ? 'shadow' : 'cross',
+            crossStyle: { color: borderColor },
+            shadowStyle: { color: activeTheme === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.03)' }
+          },
+          backgroundColor: activeTheme === 'dark' ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.98)',
+          borderColor: activeTheme === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.1)',
           borderWidth: 1,
           padding: [8, 12],
-          textStyle: {
-            color: primaryTextColor,
-            fontFamily: 'Inter, sans-serif',
-            fontSize: 12
-          }
+          extraCssText: 'box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2); border-radius: 10px; backdrop-filter: blur(8px);',
+          formatter: (params) => renderTooltipHtml(params, activeTheme === 'dark', isChartFinancial)
         },
         legend: {
           show: !['Metric', 'Treemap'].includes(type) && (hasMultipleSeries || ['Pie', 'Donut'].includes(type)),
           bottom: 2,
           type: 'scroll',
+          itemWidth: 12,
+          itemHeight: 12,
+          itemGap: 12,
+          pageTextStyle: {
+            color: secondaryTextColor,
+            fontSize: 10
+          },
           textStyle: {
             color: secondaryTextColor,
-            fontFamily: 'Inter, sans-serif',
+            fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
             fontSize: 11
           }
         },
         grid: {
-          top: titleText ? 44 : 26,
-          left: '3%',
-          right: '4%',
-          bottom: hasMultipleSeries ? 44 : 24,
+          top: titleText ? 44 : 24,
+          left: 10,
+          right: 18,
+          bottom: hasMultipleSeries ? 38 : 22,
           containLabel: true
         },
         backgroundColor: 'transparent'
@@ -207,6 +353,7 @@ export default function ChartTab({
       if (type === 'Metric') {
         const val = data.length > 0 ? (data[0].value ?? data[0][cols[1]] ?? data[0][cols[0]] ?? 0) : 0;
         const metricName = config.title || formatTitle(xKey) || 'Metric';
+        const isMetricFinancial = isChartFinancial || isFinancialMetric(metricName);
         const primaryMetricColor = modeTokens?.primary || resolvedPalette[0] || (activeTheme === 'dark' ? '#818cf8' : '#6366f1');
 
         return {
@@ -218,11 +365,11 @@ export default function ChartTab({
                 left: 'center',
                 top: '36%',
                 style: {
-                  text: typeof val === 'number' ? val.toLocaleString() : String(val),
-                  fontSize: 38,
+                  text: typeof val === 'number' ? formatFullNumber(val, isMetricFinancial) : String(val),
+                  fontSize: 36,
                   fontWeight: 'bold',
                   fill: primaryMetricColor,
-                  fontFamily: 'Inter, sans-serif'
+                  fontFamily: 'Inter, system-ui, -apple-system, sans-serif'
                 }
               },
               {
@@ -234,7 +381,7 @@ export default function ChartTab({
                   fontSize: 13,
                   fontWeight: 600,
                   fill: secondaryTextColor,
-                  fontFamily: 'Inter, sans-serif'
+                  fontFamily: 'Inter, system-ui, -apple-system, sans-serif'
                 }
               }
             ]
@@ -252,15 +399,19 @@ export default function ChartTab({
           value: parseNum(row[data_key])
         }));
 
+        const isManySlices = pieData.length > 8;
+
         return {
           ...baseOption,
           legend: {
             show: true,
             type: 'scroll',
             bottom: 2,
+            pageTextStyle: { color: secondaryTextColor, fontSize: 10 },
             textStyle: {
               color: secondaryTextColor,
-              fontSize: 11
+              fontSize: 11,
+              fontFamily: 'Inter, sans-serif'
             }
           },
           series: [{
@@ -275,12 +426,14 @@ export default function ChartTab({
               borderWidth: 2
             },
             label: {
-              show: true,
+              show: !isManySlices,
               formatter: '{b}: {d}%',
               color: secondaryTextColor,
-              fontSize: 11
+              fontSize: 11,
+              fontFamily: 'Inter, sans-serif'
             },
             labelLine: {
+              show: !isManySlices,
               lineStyle: {
                 color: borderColor
               }
@@ -318,10 +471,11 @@ export default function ChartTab({
             ],
             label: {
               show: true,
-              formatter: '{b}\n{c}',
+              formatter: (params) => `${params.name}\n${formatCompactNumber(params.value, isChartFinancial)}`,
               color: '#ffffff',
               fontSize: 11,
-              fontWeight: 'bold'
+              fontWeight: 'bold',
+              fontFamily: 'Inter, sans-serif'
             },
             breadcrumb: { show: false },
             data: treemapData
@@ -357,7 +511,9 @@ export default function ChartTab({
           name: actualName,
           data: actualData,
           type: type.includes('Bar') && !type.includes('Stacked') ? 'bar' : 'line',
-          smooth: true,
+          smooth: 0.35,
+          barMaxWidth: 36,
+          barMinWidth: 6,
           itemStyle: {
             color: actualColor,
             borderRadius: [4, 4, 0, 0]
@@ -397,9 +553,11 @@ export default function ChartTab({
           name: predName,
           data: predData,
           type: type.includes('Bar') && !type.includes('Stacked') ? 'bar' : 'line',
-          smooth: true,
+          smooth: 0.35,
+          barMaxWidth: 36,
+          barMinWidth: 6,
           symbol: 'circle',
-          symbolSize: 8,
+          symbolSize: 7,
           itemStyle: {
             color: predColor,
             borderRadius: [4, 4, 0, 0]
@@ -413,13 +571,15 @@ export default function ChartTab({
 
         series = [actualSeriesOpt, predSeriesOpt];
       } else if (type === 'Horizontal Bar') {
-        // Horizontal Bar: Value axis is X, Category is Y
+        // Horizontal Bar: Value axis is X, Category axis is Y
         series = activeSeries.map((s, sIdx) => {
           const sData = data.map(row => parseNum(row[s.data_key]));
           return {
             name: s.name,
             data: sData,
             type: 'bar',
+            barMaxWidth: 26,
+            barMinWidth: 6,
             itemStyle: {
               borderRadius: [0, 6, 6, 0],
               color: hasMultipleSeries
@@ -430,42 +590,45 @@ export default function ChartTab({
               show: true,
               position: 'right',
               color: secondaryTextColor,
-              fontSize: 11,
+              fontSize: 10,
               fontWeight: 600,
+              fontFamily: 'Inter, sans-serif',
               formatter: (params) => {
                 const v = params.value;
-                return (v !== null && v !== undefined && v !== 0) ? (typeof v === 'number' ? v.toLocaleString() : v) : '';
+                return (v !== null && v !== undefined && v !== 0) ? formatCompactNumber(v, isChartFinancial) : '';
               }
             }
           };
         });
 
-        const showSlider = xData.length > 12;
-        const zoomConfig = [{ type: 'inside', start: 0, end: 100 }];
-        if (showSlider) {
-          zoomConfig.push({
-            type: 'slider',
+        // Horizontal Bar dataZoom: mouse-wheel/pinch inside zoom along Y-axis if data is large
+        const showYSlider = xData.length > 14;
+        const zoomConfig = [
+          {
+            type: 'inside',
             yAxisIndex: 0,
-            start: 0,
-            end: 100,
-            right: 4,
-            width: 14,
-            textStyle: { color: 'transparent' },
-            borderColor: 'transparent',
-            backgroundColor: activeTheme === 'dark' ? 'rgba(30,41,59,0.4)' : 'rgba(226,232,240,0.6)',
-            fillerColor: `${modeTokens?.primary || '#8b5cf6'}40`
-          });
-        }
+            zoomOnMouseWheel: true,
+            moveOnMouseMove: true,
+            moveOnMouseWheel: true
+          }
+        ];
 
         return {
           ...baseOption,
           grid: {
             ...baseOption.grid,
-            right: showSlider ? 36 : '4%'
+            left: 10,
+            right: 48,
+            bottom: hasMultipleSeries ? 36 : 20
           },
           xAxis: {
             type: 'value',
-            axisLabel: { color: secondaryTextColor },
+            axisLabel: {
+              color: secondaryTextColor,
+              fontSize: 11,
+              fontFamily: 'Inter, sans-serif',
+              formatter: (val) => formatCompactNumber(val, isChartFinancial)
+            },
             axisLine: { show: false },
             splitLine: {
               lineStyle: {
@@ -477,8 +640,17 @@ export default function ChartTab({
           yAxis: {
             type: 'category',
             data: xData,
-            axisLabel: { color: secondaryTextColor, interval: 0, rotate: 0 },
+            axisLabel: {
+              color: secondaryTextColor,
+              fontSize: 11,
+              fontFamily: 'Inter, sans-serif',
+              interval: 0,
+              width: 110,
+              overflow: 'truncate',
+              ellipsis: '...'
+            },
             axisLine: { lineStyle: { color: borderColor } },
+            axisTick: { show: false },
             splitLine: { show: false }
           },
           series: series,
@@ -497,12 +669,12 @@ export default function ChartTab({
             name: s.name,
             data: sData,
             type: 'scatter',
-            symbolSize: 12,
+            symbolSize: 10,
             itemStyle: {
               color: sColor,
               borderColor: surfaceColor,
               borderWidth: 1.5,
-              shadowBlur: 8,
+              shadowBlur: 6,
               shadowColor: `${sColor}50`
             }
           };
@@ -528,6 +700,10 @@ export default function ChartTab({
           }
 
           if (isBar) {
+            sOpt.barMaxWidth = 36;
+            sOpt.barMinWidth = 6;
+            sOpt.barGap = '20%';
+            sOpt.barCategoryGap = '35%';
             sOpt.itemStyle = {
               borderRadius: isStacked ? 0 : [6, 6, 0, 0],
               color: hasMultipleSeries || isStacked
@@ -535,21 +711,24 @@ export default function ChartTab({
                 : (params) => resolvedPalette[params.dataIndex % resolvedPalette.length]
             };
             sOpt.label = {
-              show: !isStacked,
+              show: !isStacked && xData.length <= 14,
               position: 'top',
               color: secondaryTextColor,
-              fontSize: 11,
+              fontSize: 10,
               fontWeight: 600,
+              fontFamily: 'Inter, sans-serif',
               formatter: (params) => {
                 const v = params.value;
-                return (v !== null && v !== undefined && v !== 0) ? (typeof v === 'number' ? v.toLocaleString() : v) : '';
+                const isCur = isChartFinancial || isFinancialMetric(s.name) || isFinancialMetric(s.data_key);
+                return (v !== null && v !== undefined && v !== 0) ? formatCompactNumber(v, isCur) : '';
               }
             };
           } else {
             // Line / Area
-            sOpt.smooth = true;
+            sOpt.smooth = 0.35;
             sOpt.symbol = 'circle';
             sOpt.symbolSize = 6;
+            sOpt.showSymbol = xData.length <= 25;
             sOpt.itemStyle = {
               color: sColor,
               borderColor: surfaceColor,
@@ -575,18 +754,44 @@ export default function ChartTab({
         });
       }
 
+      // Automatically configure X-axis zoom & scroll and rotation when labels are long or data points are dense
+      const maxLabelLen = xData.reduce((m, l) => Math.max(m, String(l ?? '').length), 0);
+      const isDenseX = xData.length > 10;
+      const isRotated = xData.length > 6 || maxLabelLen > 8;
+      const visibleCount = Math.min(xData.length, 12);
+      const initialEndPct = isDenseX ? Math.max(8, Math.round((visibleCount / xData.length) * 100)) : 100;
+
       let xAxisConfig = {
         type: 'category',
         data: xData,
-        axisLabel: { color: secondaryTextColor, interval: 'auto', rotate: xData.length > 8 ? 30 : 0 },
+        axisLabel: {
+          color: secondaryTextColor,
+          fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+          fontSize: 11,
+          interval: 0,
+          rotate: maxLabelLen > 14 ? 40 : (isRotated ? 28 : 0),
+          hideOverlap: true,
+          margin: 10,
+          formatter: (val) => {
+            const s = String(val ?? '');
+            return s.length > 28 ? s.slice(0, 26) + '…' : s;
+          }
+        },
         axisLine: { lineStyle: { color: borderColor } },
+        axisTick: { show: false },
         splitLine: { show: false }
       };
 
       let yAxisConfig = {
         type: 'value',
-        axisLabel: { color: secondaryTextColor },
+        axisLabel: {
+          color: secondaryTextColor,
+          fontSize: 11,
+          fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+          formatter: (val) => formatCompactNumber(val, isChartFinancial)
+        },
         axisLine: { show: false },
+        axisTick: { show: false },
         splitLine: {
           lineStyle: {
             color: splitLineColor,
@@ -595,32 +800,71 @@ export default function ChartTab({
         }
       };
 
-      const showSlider = xData.length > 12;
       const zoomConfig = [
-        { type: 'inside', start: 0, end: 100 }
+        {
+          type: 'inside',
+          xAxisIndex: 0,
+          start: 0,
+          end: initialEndPct,
+          zoomOnMouseWheel: true,
+          moveOnMouseMove: true,
+          moveOnMouseWheel: true
+        }
       ];
-      if (showSlider) {
+
+      if (isDenseX) {
         zoomConfig.push({
           type: 'slider',
+          xAxisIndex: 0,
+          show: true,
           start: 0,
-          end: 100,
-          bottom: 4,
-          height: 14,
-          textStyle: { color: 'transparent' },
+          end: initialEndPct,
+          bottom: 2,
+          height: 18,
           borderColor: 'transparent',
-          backgroundColor: activeTheme === 'dark' ? 'rgba(30,41,59,0.4)' : 'rgba(226,232,240,0.6)',
-          fillerColor: `${modeTokens?.primary || '#8b5cf6'}40`,
+          backgroundColor: activeTheme === 'dark' ? 'rgba(30, 41, 59, 0.45)' : 'rgba(226, 232, 240, 0.65)',
+          fillerColor: `${modeTokens?.primary || '#8b5cf6'}35`,
+          handleSize: '100%',
           handleStyle: {
-            color: modeTokens?.primary || '#8b5cf6'
+            color: modeTokens?.primary || '#8b5cf6',
+            borderColor: modeTokens?.surface || '#1e293b',
+            borderWidth: 1.5,
+            shadowBlur: 4,
+            shadowColor: 'rgba(0,0,0,0.2)'
+          },
+          moveHandleStyle: {
+            color: modeTokens?.primary || '#8b5cf6',
+            opacity: 0.7
+          },
+          selectedDataBackground: {
+            lineStyle: { color: modeTokens?.primary || '#8b5cf6' },
+            areaStyle: { color: `${modeTokens?.primary || '#8b5cf6'}20` }
+          },
+          dataBackground: {
+            lineStyle: { color: activeTheme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
+            areaStyle: { color: activeTheme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }
+          },
+          textStyle: {
+            color: secondaryTextColor,
+            fontSize: 10,
+            fontFamily: 'Inter, sans-serif'
           }
         });
       }
+
+      const hasTitle = Boolean(titleText);
+      let bottomPadding = (isDenseX ? 28 : 10) + (isRotated ? (maxLabelLen > 14 ? 36 : 26) : 14) + (hasMultipleSeries ? 24 : 10);
+      if (bottomPadding < 30) bottomPadding = 30;
 
       return {
         ...baseOption,
         grid: {
           ...baseOption.grid,
-          bottom: showSlider ? (hasMultipleSeries ? 50 : 36) : (hasMultipleSeries ? 36 : 24)
+          top: hasTitle ? 46 : 26,
+          left: 10,
+          right: isDenseX ? 22 : 16,
+          bottom: bottomPadding,
+          containLabel: true
         },
         xAxis: xAxisConfig,
         yAxis: yAxisConfig,
@@ -633,12 +877,48 @@ export default function ChartTab({
     }
   };
 
+  // Setup ECharts instance
+  useEffect(() => {
+    if (!chartRef.current) return;
+    if (!option && rows.length === 0) return;
+
+    // Dispose existing instance on DOM element if present
+    const existing = echarts.getInstanceByDom(chartRef.current);
+    if (existing && !existing.isDisposed()) {
+      existing.dispose();
+    }
+
+    let chart = null;
+    try {
+      chart = echarts.init(chartRef.current, effectiveTheme === 'dark' ? 'dark' : null);
+      setChartInstance(chart);
+
+      const finalOption = option || getChartOption(selectedType, chartConfig, rows, columns, effectiveTheme, themePalette, template, customAccent);
+      if (finalOption && !chart.isDisposed()) {
+        chart.setOption(finalOption, true);
+        requestAnimationFrame(() => {
+          if (chart && !chart.isDisposed()) {
+            chart.resize();
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Error rendering chart:', err);
+    }
+
+    return () => {
+      if (chart && !chart.isDisposed()) {
+        chart.dispose();
+      }
+    };
+  }, [option, selectedType, chartConfig, rows, columns, effectiveTheme, themePalette, dashboardTheme, themeTemplate, customAccent]);
+
   const handleDownloadImage = () => {
     if (!chartInstance) return;
     const url = chartInstance.getDataURL({
       type: 'png',
       pixelRatio: 2,
-      backgroundColor: modeTokens.surface || (isDarkTheme ? '#0f172a' : '#ffffff')
+      backgroundColor: modeTokens?.surface || (isDarkTheme ? '#0f172a' : '#ffffff')
     });
     const link = document.createElement('a');
     link.href = url;
@@ -661,67 +941,90 @@ export default function ChartTab({
     setIsFullscreen(!isFullscreen);
   };
 
+  // Calculate optimal chart height based on label lengths and type
+  const optimalHeight = calculateChartHeight(chartConfig, rows, columns, selectedType);
+
+  // Dynamic canvas height: automatically expands when many categories on Horizontal Bar or when labels are long
+  const isHorizontalBar = selectedType === 'Horizontal Bar';
+  const dataCount = rows.length;
+  const isDenseCategories = isHorizontalBar && dataCount > 6;
+  const canvasHeight = isDenseCategories
+    ? `${Math.max(320, dataCount * 36 + 70)}px`
+    : (style?.height ? '100%' : `${optimalHeight}px`);
+
   return (
     <div
       ref={containerRef}
       className={`flex flex-col h-full w-full relative ${
         isFullscreen ? 'fixed inset-0 z-50 p-6' : 'p-2'
-      }`}
+      } ${className}`}
       style={{
         backgroundColor: isFullscreen
-          ? (modeTokens.surface || (isDarkTheme ? '#0f172a' : '#ffffff'))
+          ? (modeTokens?.surface || (isDarkTheme ? '#0f172a' : '#ffffff'))
           : 'transparent',
-        color: modeTokens.text?.primary || (isDarkTheme ? '#f8fafc' : '#0f172a')
+        color: modeTokens?.text?.primary || (isDarkTheme ? '#f8fafc' : '#0f172a'),
+        minHeight: isFullscreen ? undefined : (style?.height ? undefined : `${optimalHeight}px`),
+        ...style
       }}
     >
       {/* Chart Control Bar */}
       <div
         className="flex flex-wrap items-center justify-between pb-2 mb-2 space-y-1 sm:space-y-0 shrink-0"
         style={{
-          borderBottom: `1px solid ${modeTokens.border || (isDarkTheme ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)')}`
+          borderBottom: `1px solid ${modeTokens?.border || (isDarkTheme ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)')}`
         }}
       >
-        <div className="flex items-center space-x-2">
-          <BarChart2 className="w-3.5 h-3.5" style={{ color: modeTokens.primary }} />
-          <span
-            className="text-[11px] font-semibold"
-            style={{ color: modeTokens.text?.secondary || (isDarkTheme ? '#94a3b8' : '#64748b') }}
-          >
-            Type:
-          </span>
-          <select
-            value={selectedType}
-            onChange={(e) => setSelectedType(e.target.value)}
-            className="text-[11px] font-medium px-2 py-0.5 rounded-lg focus:outline-none transition-colors"
-            style={{
-              backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)',
-              border: `1px solid ${modeTokens.border || (isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)')}`,
-              color: modeTokens.text?.primary || (isDarkTheme ? '#f1f5f9' : '#1e293b')
-            }}
-          >
-            {CHART_TYPES.map(type => (
-              <option
-                key={type}
-                value={type}
-                style={{
-                  backgroundColor: modeTokens.surface || (isDarkTheme ? '#1e293b' : '#ffffff'),
-                  color: modeTokens.text?.primary || (isDarkTheme ? '#f1f5f9' : '#1e293b')
-                }}
-              >
-                {type}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* Type selector (only displayed when rendered with dynamic rows) */}
+        {!option ? (
+          <div className="flex items-center space-x-2">
+            <BarChart2 className="w-3.5 h-3.5" style={{ color: modeTokens?.primary }} />
+            <span
+              className="text-[11px] font-semibold"
+              style={{ color: modeTokens?.text?.secondary || (isDarkTheme ? '#94a3b8' : '#64748b') }}
+            >
+              Type:
+            </span>
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              className="text-[11px] font-medium px-2 py-0.5 rounded-lg focus:outline-none transition-colors"
+              style={{
+                backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)',
+                border: `1px solid ${modeTokens?.border || (isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)')}`,
+                color: modeTokens?.text?.primary || (isDarkTheme ? '#f1f5f9' : '#1e293b')
+              }}
+            >
+              {CHART_TYPES.map(t => (
+                <option
+                  key={t}
+                  value={t}
+                  style={{
+                    backgroundColor: modeTokens?.surface || (isDarkTheme ? '#1e293b' : '#ffffff'),
+                    color: modeTokens?.text?.primary || (isDarkTheme ? '#f1f5f9' : '#1e293b')
+                  }}
+                >
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-2">
+            <BarChart2 className="w-3.5 h-3.5" style={{ color: modeTokens?.primary }} />
+            <span className="text-[11px] font-semibold" style={{ color: modeTokens?.text?.secondary }}>
+              {chartConfig?.title || 'Chart'}
+            </span>
+          </div>
+        )}
 
         {/* Action icons */}
-        <div className="flex items-center space-x-1.5">
+        <div className="flex items-center space-x-1.5 ml-auto">
           <button
             onClick={handleDownloadImage}
             title="Download PNG"
             className="p-1 rounded-lg transition-colors hover:opacity-80"
             style={{
-              color: modeTokens.text?.secondary || (isDarkTheme ? '#94a3b8' : '#64748b'),
+              color: modeTokens?.text?.secondary || (isDarkTheme ? '#94a3b8' : '#64748b'),
               backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)'
             }}
           >
@@ -732,7 +1035,7 @@ export default function ChartTab({
             title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
             className="p-1 rounded-lg transition-colors hover:opacity-80"
             style={{
-              color: modeTokens.text?.secondary || (isDarkTheme ? '#94a3b8' : '#64748b'),
+              color: modeTokens?.text?.secondary || (isDarkTheme ? '#94a3b8' : '#64748b'),
               backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)'
             }}
           >
@@ -741,14 +1044,26 @@ export default function ChartTab({
         </div>
       </div>
 
-      {/* Chart Canvas */}
-      <div className="flex-1 w-full relative min-h-[160px]">
-        {rows.length > 0 ? (
-          <div ref={chartRef} className="w-full h-full" style={{ minHeight: '160px' }} />
+      {/* Chart Canvas with Smooth Scroll Container */}
+      <div
+        className="flex-1 w-full relative overflow-y-auto overflow-x-hidden custom-scrollbar min-h-[180px]"
+        style={{
+          maxHeight: isFullscreen ? 'calc(100vh - 80px)' : undefined
+        }}
+      >
+        {(rows.length > 0 || option) ? (
+          <div
+            ref={chartRef}
+            style={{
+              width: '100%',
+              height: canvasHeight,
+              minHeight: '180px'
+            }}
+          />
         ) : (
           <div
-            className="flex flex-col items-center justify-center h-full space-y-2"
-            style={{ color: modeTokens.text?.muted || (isDarkTheme ? '#64748b' : '#94a3b8') }}
+            className="flex flex-col items-center justify-center h-full min-h-[160px] space-y-2"
+            style={{ color: modeTokens?.text?.muted || (isDarkTheme ? '#64748b' : '#94a3b8') }}
           >
             <span className="text-xs italic">No data returned to plot.</span>
           </div>

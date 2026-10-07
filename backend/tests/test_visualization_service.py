@@ -69,3 +69,63 @@ async def test_chat_to_visualization_spec_with_multisheet_meta():
     assert "x_variable" in spec
     assert spec["x_variable"] != "_sheets"
 
+
+@pytest.mark.asyncio
+async def test_generate_visualization_insights():
+    aggregated_data = [
+        {"department": "Engineering", "headcount": 120, "budget": 500000},
+        {"department": "Marketing", "headcount": 45, "budget": 200000},
+        {"department": "Sales", "headcount": 80, "budget": 350000},
+        {"department": "HR", "headcount": 15, "budget": 60000}
+    ]
+    columns = ["department", "headcount", "budget"]
+    
+    result = await visualization_service.generate_visualization_insights(
+        title="Department Budget Overview",
+        chart_type="Bar",
+        x_variable="department",
+        y_variable="budget",
+        aggregated_data=aggregated_data,
+        columns=columns
+    )
+    
+    assert isinstance(result, str)
+    assert len(result) > 50
+    # Must contain markdown sections or takeaways
+    assert "Key Findings" in result or "Takeaways" in result or "Department" in result
+
+
+@pytest.mark.asyncio
+async def test_generate_visualization_insights_heuristic_fallback(monkeypatch):
+    from unittest.mock import AsyncMock
+    from backend.llm.client import groq_client
+
+    async def mock_fail(*args, **kwargs):
+        raise ConnectionError("LLM offline")
+
+    monkeypatch.setattr(groq_client, "get_chat_completion", mock_fail)
+
+    aggregated_data = [
+        {"month": "Jan", "revenue": 10000},
+        {"month": "Feb", "revenue": 15000},
+        {"month": "Mar", "revenue": 22000},
+        {"month": "Apr", "revenue": 18000}
+    ]
+    columns = ["month", "revenue"]
+
+    result = await visualization_service.generate_visualization_insights(
+        title="Monthly Revenue Trend",
+        chart_type="Line",
+        x_variable="month",
+        y_variable="revenue",
+        aggregated_data=aggregated_data,
+        columns=columns
+    )
+
+    assert isinstance(result, str)
+    assert "Monthly Revenue Trend" in result
+    assert "Mar" in result or "22,000" in result
+    assert "Takeaways" in result
+
+
+

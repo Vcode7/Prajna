@@ -1,33 +1,44 @@
 import React from 'react';
 import {
-  TrendingUp, TrendingDown, DollarSign, Users, Hash,
+  TrendingUp, TrendingDown, IndianRupee, Users, Hash,
   Activity, Layers, Award, BarChart2
 } from 'lucide-react';
 
-// Format numbers cleanly
-function formatValue(val) {
+// Format numbers cleanly using Indian metrics system (Crores Cr, Lakhs L, Hazar K, and en-IN commas)
+function formatValue(val, title = '') {
   if (val === null || val === undefined || val === '') return '0';
+  const t = String(title || '').toLowerCase();
+  const isCurrency = t.includes('revenue') || t.includes('sales') || t.includes('price') ||
+                     t.includes('cost') || t.includes('profit') || t.includes('amount') ||
+                     t.includes('rupee') || t.includes('inr') || t.includes('dollar') ||
+                     t.includes('salary') || t.includes('budget') || t.includes('spend');
+  const prefix = isCurrency ? '₹' : '';
+
   if (typeof val === 'number') {
     if (isNaN(val)) return '0';
-    if (Math.abs(val) >= 1_000_000_000) {
-      return (val / 1_000_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 }) + 'B';
+    const abs = Math.abs(val);
+    if (abs >= 10_000_000) { // 1 Crore = 10,000,000
+      const cr = (val / 10_000_000).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+      return `${prefix}${cr} Cr`;
     }
-    if (Math.abs(val) >= 1_000_000) {
-      return (val / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 }) + 'M';
+    if (abs >= 100_000) { // 1 Lakh = 100,000
+      const lk = (val / 100_000).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+      return `${prefix}${lk} L`;
     }
-    if (Math.abs(val) >= 10_000) {
-      return val.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    if (abs >= 10_000) { // 10 Thousand+
+      const k = (val / 1_000).toLocaleString('en-IN', { maximumFractionDigits: 1 });
+      return `${prefix}${k} K`;
     }
-    return val.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    return `${prefix}${val.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
   }
-  return String(val);
+  return `${prefix}${String(val)}`;
 }
 
 // Select an appropriate icon based on title
 function getMetricIcon(title = '') {
   const t = title.toLowerCase();
-  if (t.includes('revenue') || t.includes('sales') || t.includes('price') || t.includes('cost') || t.includes('profit') || t.includes('amount') || t.includes('dollar')) {
-    return DollarSign;
+  if (t.includes('revenue') || t.includes('sales') || t.includes('price') || t.includes('cost') || t.includes('profit') || t.includes('amount') || t.includes('dollar') || t.includes('rupee') || t.includes('inr') || t.includes('salary') || t.includes('spend') || t.includes('budget')) {
+    return IndianRupee;
   }
   if (t.includes('user') || t.includes('customer') || t.includes('client') || t.includes('employee') || t.includes('people')) {
     return Users;
@@ -60,7 +71,7 @@ export default function KPICard({
   isLoading = false
 }) {
   const Icon = getMetricIcon(title);
-  const formattedVal = formatValue(value);
+  const formattedVal = formatValue(value, title);
 
   const template = resolveThemeTemplate(themeTemplate || theme, customAccent);
   const isDark = colorMode ? colorMode === 'dark' : (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
@@ -82,6 +93,8 @@ export default function KPICard({
       color: tokens.text.primary
     }
   };
+
+  const isFinancial = /revenue|sales|price|cost|profit|amount|rupee|inr|salary|spend|budget/i.test(title);
 
   return (
     <div
@@ -124,7 +137,7 @@ export default function KPICard({
           <div
             className="text-2xl sm:text-3xl font-black tracking-tight leading-none truncate"
             style={dynamicStyles.valueStyle}
-            title={typeof value === 'number' ? value.toLocaleString() : String(value)}
+            title={typeof value === 'number' ? `${isFinancial ? '₹' : ''}${value.toLocaleString('en-IN')}` : String(value)}
           >
             {formattedVal}
           </div>

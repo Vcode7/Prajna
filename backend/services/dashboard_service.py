@@ -44,6 +44,10 @@ class DashboardService:
                 }
             ]
         
+        # Ensure any cards in this dashboard are added to SavedVisualization for the Visualizations workspace and ML training
+        if project_id and tabs:
+            self.sync_dashboard_cards_to_visualizations(db, project_id, tabs, title or "Executive Dashboard")
+
         dashboard = SavedDashboard(
             project_id=project_id,
             title=title or "Executive Dashboard",
@@ -56,6 +60,116 @@ class DashboardService:
         db.refresh(dashboard)
         return dashboard.to_dict()
 
+    def sync_dashboard_cards_to_visualizations(
+        self,
+        db: Session,
+        project_id: Optional[str],
+        tabs: Optional[List[Dict[str, Any]]],
+        dashboard_title: str = "Dashboard",
+        dashboard_id: Optional[str] = None
+    ) -> bool:
+        """
+        Ensures all chart cards in dashboard tabs are backed by SavedVisualization records in the database.
+        Syncs cards to the Visualizations workspace so they appear in Visualizations tab and can be used for ML training.
+        Returns True if any new visualizations were created or card links updated.
+        """
+        if not project_id or not tabs:
+            return False
+
+        modified = False
+        for tab in tabs:
+            layout = tab.get("layout", [])
+            for card in layout:
+                if not isinstance(card, dict):
+                    continue
+
+                card_id = card.get("id") or f"card-{uuid.uuid4().hex[:8]}"
+                card["id"] = card_id
+                vis_id = card.get("visualization_id")
+
+                # 1. Check if existing linked visualization is valid in DB
+                existing_vis = None
+                if vis_id:
+                    existing_vis = db.query(SavedVisualization).filter(SavedVisualization.id == vis_id).first()
+
+                # 2. Check if a visualization already exists matching this card_id or title
+                if not existing_vis:
+                    card_title = (card.get("title") or "").strip()
+                    candidates = db.query(SavedVisualization).filter(
+                        SavedVisualization.dataset_id == project_id
+                    ).all()
+                    for cand in candidates:
+                        cfg = cand.configuration or {}
+                        if cfg.get("card_id") == card_id:
+                            existing_vis = cand
+                            break
+                        if card_title and cand.title == card_title and cand.chart_type == card.get("chart_type"):
+                            existing_vis = cand
+                            break
+
+                if existing_vis:
+                    if card.get("visualization_id") != existing_vis.id:
+                        card["visualization_id"] = existing_vis.id
+                        modified = True
+                    continue
+
+                # 3. Create a new SavedVisualization for this dashboard card
+                chart_type = card.get("chart_type") or "Bar"
+                x_var = card.get("x_variable")
+                y_var = card.get("y_variable")
+                group_var = card.get("group_variable")
+                size_var = card.get("size_variable")
+                agg = card.get("aggregation") or "none"
+                filters = copy.deepcopy(card.get("filters") or [])
+                sql_query = card.get("sql_query")
+
+                # If sql_query is present, make sure it is included in filters so query-data can execute it
+                if sql_query:
+                    has_sql = any(isinstance(f, dict) and f.get("sql_query") for f in filters)
+                    if not has_sql:
+                        filters.append({"sql_query": sql_query})
+
+                # Determine appropriate category so it shows in the right tab in Visualizations workspace
+                if chart_type == "Metric" or (not y_var and x_var):
+                    category = "single_variable"
+                elif group_var or size_var:
+                    category = "multi_variable"
+                else:
+                    category = "bi_variable"
+
+                item_title = card.get("title") or f"{chart_type} Chart"
+                description = card.get("description") or f"Dashboard chart from '{dashboard_title}'"
+
+                new_vis = SavedVisualization(
+                    id=str(uuid.uuid4()),
+                    dataset_id=project_id,
+                    category=category,
+                    chart_type=chart_type,
+                    x_variable=x_var,
+                    y_variable=y_var,
+                    group_variable=group_var,
+                    size_variable=size_var,
+                    aggregation=agg,
+                    filters=filters,
+                    title=item_title,
+                    description=description,
+                    configuration={
+                        "sql": sql_query,
+                        "calculations": card.get("calculations"),
+                        "from_dashboard": True,
+                        "dashboard_id": dashboard_id,
+                        "card_id": card_id,
+                        "dashboard_title": dashboard_title
+                    }
+                )
+                db.add(new_vis)
+                db.flush()
+
+                card["visualization_id"] = new_vis.id
+                modified = True
+
+        return modified
+
     def list_dashboards(self, db: Session, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Lists dashboards optionally filtered by project."""
         query = db.query(SavedDashboard)
@@ -65,9 +179,16 @@ class DashboardService:
         return [d.to_dict() for d in dashboards]
 
     def get_dashboard(self, db: Session, dashboard_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieves a single dashboard by ID."""
+        """Retrieves a single dashboard by ID, auto-syncing its cards to SavedVisualization if needed."""
         dashboard = db.query(SavedDashboard).filter(SavedDashboard.id == dashboard_id).first()
-        return dashboard.to_dict() if dashboard else None
+        if not dashboard:
+            return None
+        if dashboard.project_id and dashboard.tabs:
+            if self.sync_dashboard_cards_to_visualizations(db, dashboard.project_id, dashboard.tabs, dashboard.title, dashboard.id):
+                flag_modified(dashboard, "tabs")
+                db.commit()
+                db.refresh(dashboard)
+        return dashboard.to_dict()
 
     def update_dashboard(
         self,
@@ -92,6 +213,9 @@ class DashboardService:
         if description is not None:
             dashboard.description = description
         if tabs is not None:
+            target_proj = dashboard.project_id or project_id
+            if target_proj:
+                self.sync_dashboard_cards_to_visualizations(db, target_proj, tabs, dashboard.title, dashboard.id)
             dashboard.tabs = copy.deepcopy(tabs)
             flag_modified(dashboard, "tabs")
         if settings is not None:
@@ -425,7 +549,7 @@ class DashboardService:
                 mx = meta.get("max", "?")
                 mean = meta.get("mean", "?")
                 details += f", min={mn}, max={mx}, mean={mean}"
-            elif dtype in ("categorical", "boolean"):
+            elif dtype in ("categorical", "boolean", "text"):
                 uniq = meta.get("unique_count", "?")
                 top = meta.get("top_value", "?")
                 details += f", unique_values={uniq}, top_value={top}"

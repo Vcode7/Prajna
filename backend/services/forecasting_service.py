@@ -208,6 +208,11 @@ class ForecastingService:
         if y_var and y_var in df.columns:
             if pd.api.types.is_numeric_dtype(df[y_var]):
                 target_column = y_var
+            else:
+                # Try converting to numeric
+                cleaned = pd.to_numeric(df[y_var].astype(str).str.replace(r'[\$,₹,]', '', regex=True), errors='coerce')
+                if cleaned.notna().sum() >= max(3, int(len(df) * 0.3)):
+                    target_column = y_var
 
         if not target_column:
             # Find the best numeric column
@@ -215,8 +220,15 @@ class ForecastingService:
             if numeric_cols:
                 target_column = numeric_cols[0]
 
-        # 3. Determine suitability
-        is_suitable = date_column is not None and target_column is not None
+        # 3. If date column not found, use x_var or synthetic sequential timeline
+        if not date_column:
+            if x_var and x_var in df.columns:
+                date_column = x_var
+            else:
+                date_column = "_timeline_seq"
+
+        # 4. Determine suitability
+        is_suitable = target_column is not None and len(df) >= 3
         row_count = len(df)
 
         return {
@@ -225,9 +237,9 @@ class ForecastingService:
             "target_column": target_column,
             "row_count": row_count,
             "reason": (
-                f"Detected date column '{date_column}' and target metric '{target_column}' with {row_count} observations."
+                f"Detected date/timeline column '{date_column}' and target metric '{target_column}' with {row_count} observations."
                 if is_suitable else
-                f"Could not detect {'date/time column' if not date_column else 'numeric target metric'} for forecasting."
+                f"Could not detect {'target metric' if not target_column else 'sufficient data rows'} for forecasting."
             )
         }
 
@@ -373,8 +385,28 @@ Return JSON ONLY matching this exact structure:
         """
         work_df = df.copy()
 
-        # Parse and sort by date
-        work_df[date_column] = pd.to_datetime(work_df[date_column], errors='coerce')
+        # Ensure target is numeric
+        if work_df[target_column].dtype == object:
+            work_df[target_column] = (
+                work_df[target_column].astype(str)
+                .str.replace(r'[\$,₹,]', '', regex=True)
+                .str.strip()
+            )
+        work_df[target_column] = pd.to_numeric(work_df[target_column], errors='coerce')
+        work_df = work_df.dropna(subset=[target_column])
+
+        # Parse and sort by date/timeline
+        if date_column not in work_df.columns:
+            work_df[date_column] = pd.date_range(end=datetime.now(), periods=len(work_df), freq='D')
+        else:
+            parsed_dates = pd.to_datetime(work_df[date_column].astype(str), errors='coerce')
+            if parsed_dates.notna().sum() >= max(3, int(len(work_df) * 0.3)):
+                work_df[date_column] = parsed_dates
+                if work_df[date_column].isna().any():
+                    work_df[date_column] = work_df[date_column].ffill().bfill()
+            else:
+                work_df[date_column] = pd.date_range(end=datetime.now(), periods=len(work_df), freq='D')
+
         work_df = work_df.dropna(subset=[date_column, target_column])
         work_df = work_df.sort_values(date_column).reset_index(drop=True)
 
@@ -383,10 +415,6 @@ Return JSON ONLY matching this exact structure:
             agg_func = {'sum': 'sum', 'avg': 'mean', 'mean': 'mean', 'max': 'max', 'min': 'min'}.get(aggregation, 'mean')
             work_df = work_df.groupby(date_column).agg({target_column: agg_func}).reset_index()
             work_df = work_df.sort_values(date_column).reset_index(drop=True)
-
-        # Ensure target is numeric
-        work_df[target_column] = pd.to_numeric(work_df[target_column], errors='coerce')
-        work_df = work_df.dropna(subset=[target_column])
 
         if len(work_df) < 3:
             raise ValueError(f"Insufficient data points ({len(work_df)}) for time-series forecasting. Need at least 3.")
@@ -397,7 +425,7 @@ Return JSON ONLY matching this exact structure:
         work_df['_scaled_target'] = scaled_values.flatten()
 
         # Create lag features
-        lag_window = min(lag_window, max(1, len(work_df) // 3))
+        lag_window = max(1, min(lag_window, max(1, len(work_df) // 3)))
         for i in range(1, lag_window + 1):
             work_df[f'lag_{i}'] = work_df['_scaled_target'].shift(i)
 
@@ -643,6 +671,8 @@ Return JSON ONLY matching this exact structure:
         if len(prepared_df) >= 2:
             date_diffs = prepared_df[date_column].diff().dropna()
             median_diff = date_diffs.median()
+            if pd.isna(median_diff) or median_diff <= pd.Timedelta(0):
+                median_diff = pd.Timedelta(days=1)
         else:
             median_diff = pd.Timedelta(days=30)
 

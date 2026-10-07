@@ -119,13 +119,162 @@ class DatasetService:
         df.columns = [str(c).strip() for c in df.columns]
         return df
 
+    def is_mixed_number_and_text(self, series: pd.Series) -> bool:
+        """
+        Identifies whether a column contains BOTH numbers and text.
+        Returns True if:
+          1. Some rows are numeric and other rows are non-numeric text strings, OR
+          2. The values themselves contain both digits and alphabetic characters (e.g. 'INV001', 'Zone 4'), OR
+          3. An object series has a mixture of numeric and string representations.
+        Excludes pure numbers (all integers/floats), pure text (no numbers/digits), booleans, and valid datetimes.
+        """
+        if series is None:
+            return False
+
+        non_null = series.dropna()
+        if non_null.empty:
+            return False
+
+        # Exclude boolean columns
+        if pd.api.types.is_bool_dtype(series):
+            return False
+        unique_vals = set(non_null.unique())
+        if unique_vals.issubset({True, False, 0, 1, 'true', 'false', 'True', 'False', '0', '1', 'yes', 'no', 'Y', 'N'}) and len(unique_vals) <= 2:
+            return False
+
+        # Exclude datetime columns
+        if pd.api.types.is_datetime64_any_dtype(series):
+            return False
+        sample_first = str(non_null.iloc[0]).strip()
+        if len(sample_first) >= 8 and (re.match(r'^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}', sample_first) or re.match(r'^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}', sample_first)):
+            try:
+                parsed = pd.to_datetime(non_null.iloc[:20], errors='coerce')
+                if parsed.notna().sum() >= max(1, int(len(non_null.iloc[:20]) * 0.8)):
+                    return False
+            except Exception:
+                pass
+
+        # If series is already purely numeric and not object
+        if pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_object_dtype(series):
+            return False
+
+        cleaned_vals = []
+        for v in non_null:
+            if v is None or pd.isna(v):
+                continue
+            sv = str(v).strip()
+            if sv.lower() in ('', 'nan', 'none', 'null', '<na>'):
+                continue
+            cleaned_vals.append((v, sv))
+
+        if not cleaned_vals:
+            return False
+
+        has_pure_number = False
+        has_pure_text = False
+        has_alphanumeric_cell = False
+        has_digit = False
+        has_letter = False
+
+        for orig_val, str_val in cleaned_vals:
+            is_num = False
+            if isinstance(orig_val, (int, float, np.integer, np.floating)):
+                is_num = True
+            else:
+                try:
+                    float(str_val)
+                    is_num = True
+                except ValueError:
+                    is_num = False
+
+            contains_digit = bool(re.search(r'\d', str_val))
+            contains_letter = bool(re.search(r'[a-zA-Z]', str_val))
+
+            if contains_digit:
+                has_digit = True
+            if contains_letter:
+                has_letter = True
+
+            if is_num:
+                has_pure_number = True
+            elif contains_letter and not contains_digit:
+                has_pure_text = True
+            elif contains_digit and contains_letter:
+                has_alphanumeric_cell = True
+
+        if has_pure_number and (has_pure_text or has_letter):
+            return True
+        if has_alphanumeric_cell:
+            return True
+        if has_digit and has_letter:
+            return True
+
+        return False
+
+    def convert_column_to_text(self, series: pd.Series) -> pd.Series:
+        """
+        Converts all values in a column to text strings while preserving nulls.
+        Integers formatted as floats (e.g. 100.0) are converted to '100'.
+        Preserves all whitespace, indentation, spaces, and formatting without stripping.
+        """
+        def _to_clean_text(val):
+            if pd.isna(val) or val is None:
+                return None
+            if isinstance(val, (int, np.integer)):
+                return str(val)
+            if isinstance(val, (float, np.floating)):
+                if val.is_integer():
+                    return str(int(val))
+                return str(val)
+            raw_s = str(val)
+            if raw_s.strip().lower() in ('nan', 'none', 'null', '<na>') and raw_s.strip() != '':
+                return None
+            return raw_s
+
+        return series.apply(_to_clean_text)
+
+    def identify_and_convert_mixed_columns(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+        """
+        Scans all columns in the DataFrame. If any column contains both numbers and text,
+        converts its data type to text (clean strings).
+        Returns the modified DataFrame and the list of converted column names.
+        """
+        df_out = df.copy()
+        converted_cols = []
+        for col in df_out.columns:
+            if self.is_mixed_number_and_text(df_out[col]):
+                converted_cols.append(col)
+                df_out[col] = self.convert_column_to_text(df_out[col]).astype(object)
+                logger.info(f"Column '{col}' identified as containing both numbers and text; converted data type to text.")
+        return df_out, converted_cols
+
+    def _detect_sql_type(self, series: pd.Series, detected_type: Optional[str] = None) -> str:
+        """
+        Returns SQLite SQL column type: INTEGER, REAL, TEXT, DATETIME, or BOOLEAN.
+        """
+        dtype = detected_type or self._detect_series_type(series)
+        if dtype == "boolean":
+            return "BOOLEAN"
+        elif dtype == "datetime":
+            return "DATETIME"
+        elif dtype == "numerical":
+            numeric_clean = pd.to_numeric(series.dropna(), errors='coerce').dropna()
+            if not numeric_clean.empty and (numeric_clean % 1 == 0).all():
+                return "INTEGER"
+            return "REAL"
+        return "TEXT"
+
     def profile_dataset(self, df: pd.DataFrame) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         Computes detailed column statistics, types, missing values, duplicates, and quality warnings.
+        Automatically identifies columns containing both numbers and text, converting them to text.
         """
-        row_count, col_count = df.shape
-        duplicate_count = int(df.duplicated().sum())
-        total_missing = int(df.isna().sum().sum())
+        # Ensure mixed number+text columns are converted
+        df_clean, mixed_converted_cols = self.identify_and_convert_mixed_columns(df)
+
+        row_count, col_count = df_clean.shape
+        duplicate_count = int(df_clean.duplicated().sum())
+        total_missing = int(df_clean.isna().sum().sum())
         
         column_meta = {}
         warnings = []
@@ -137,21 +286,32 @@ class DatasetService:
         if row_count < 10:
             warnings.append("Dataset has fewer than 10 rows; ML training requires more observations.")
 
-        for col in df.columns:
-            series = df[col]
+        for col in df_clean.columns:
+            series = df_clean[col]
             null_count = int(series.isna().sum())
             null_pct = round((null_count / max(1, row_count)) * 100, 2)
             unique_count = int(series.nunique(dropna=True))
             
             # Detect data type
-            detected_type = self._detect_series_type(series)
+            is_mixed = (col in mixed_converted_cols) or self.is_mixed_number_and_text(series)
+            if is_mixed:
+                detected_type = "text"
+                sql_type = "TEXT"
+                warnings.append(f"Column '{col}' contained both numbers and text; automatically identified and converted data type to text.")
+            else:
+                detected_type = self._detect_series_type(series)
+                sql_type = self._detect_sql_type(series, detected_type)
             
             col_info: Dict[str, Any] = {
                 "name": col,
                 "data_type": detected_type,
+                "sql_type": sql_type,
+                "raw_type": str(series.dtype),
                 "null_count": null_count,
                 "null_pct": null_pct,
                 "unique_count": unique_count,
+                "has_mixed_types": is_mixed,
+                "converted_to_text": is_mixed,
                 "sample_values": [str(v) for v in series.dropna().unique()[:5]]
             }
 
@@ -176,7 +336,7 @@ class DatasetService:
                         "q75": round(q75, 2),
                         "outlier_count": outliers_cnt
                     })
-            elif detected_type == "categorical":
+            elif detected_type in ("categorical", "text"):
                 val_counts = series.value_counts(dropna=True)
                 top_val = str(val_counts.index[0]) if not val_counts.empty else "N/A"
                 top_freq = int(val_counts.iloc[0]) if not val_counts.empty else 0
@@ -185,7 +345,7 @@ class DatasetService:
                     "top_frequency": top_freq,
                     "cardinality_ratio": round(unique_count / max(1, row_count), 4)
                 })
-                if unique_count > 100 and detected_type == "categorical" and (unique_count / row_count) > 0.8:
+                if unique_count > 100 and (unique_count / row_count) > 0.8:
                     warnings.append(f"Column '{col}' has high cardinality ({unique_count} distinct values) and might be an ID or free text.")
             elif detected_type == "datetime":
                 dt_clean = pd.to_datetime(series.dropna(), errors='coerce').dropna()
@@ -202,14 +362,16 @@ class DatasetService:
             "total_missing_values": total_missing,
             "missing_cells_pct": round((total_missing / max(1, row_count * col_count)) * 100, 2),
             "warnings": warnings,
-            "has_warnings": len(warnings) > 0
+            "has_warnings": len(warnings) > 0,
+            "converted_mixed_columns": mixed_converted_cols,
+            "has_mixed_columns": len(mixed_converted_cols) > 0
         }
 
         return column_meta, data_quality
 
     def _detect_series_type(self, series: pd.Series) -> str:
         """
-        Infers whether column is numerical, datetime, boolean, or categorical.
+        Infers whether column is numerical, datetime, boolean, text, or categorical.
         """
         non_null = series.dropna()
         if non_null.empty:
@@ -233,6 +395,10 @@ class DatasetService:
                     return "datetime"
             except Exception:
                 pass
+
+        # Check if mixed number and text
+        if self.is_mixed_number_and_text(series):
+            return "text"
 
         # Check numeric
         if pd.api.types.is_numeric_dtype(series):
@@ -311,15 +477,11 @@ class DatasetService:
 
         return df_processed, derived_list
 
-    def preprocess_dataset(self, df: pd.DataFrame, col_meta: Dict[str, Any]) -> pd.DataFrame:
+    def preprocess_dataset(self, df: pd.DataFrame, col_meta: Optional[Dict[str, Any]] = None) -> pd.DataFrame:
         """
-        Cleans strings, standardizes missing values, and ensures valid datatypes.
+        Converts mixed number/text fields to text without stripping spaces or modifying data formatting.
         """
-        clean_df = df.copy()
-        for col in clean_df.columns:
-            # Strip trailing strings
-            if clean_df[col].dtype == object:
-                clean_df[col] = clean_df[col].apply(lambda x: x.strip() if isinstance(x, str) else x)
+        clean_df, _ = self.identify_and_convert_mixed_columns(df)
         return clean_df
 
     def save_dataset_files(self, dataset_id: str, raw_content: bytes, processed_df: pd.DataFrame, filename: str) -> Tuple[str, str]:
@@ -336,23 +498,94 @@ class DatasetService:
 
         return raw_path, proc_path
 
+    def sanitize_sheet_name(self, name: str, existing_names: Optional[set] = None) -> str:
+        """
+        Sanitizes a sheet name to be valid for Excel (<=31 chars, no special characters, unique).
+        """
+        if not name:
+            name = "Sheet"
+        # Excel does not allow : \ / ? * [ ]
+        clean = re.sub(r'[\\/*?:\[\]]', '_', str(name)).strip()
+        clean = clean[:31] if clean else "Sheet"
+
+        if existing_names is None:
+            return clean
+
+        base = clean
+        counter = 2
+        while clean.lower() in existing_names:
+            suffix = f"_{counter}"
+            max_base_len = 31 - len(suffix)
+            clean = f"{base[:max_base_len]}{suffix}"
+            counter += 1
+
+        return clean
+
+    def create_multisheet_workbook_bytes(self, sheets_dict: Dict[str, pd.DataFrame]) -> bytes:
+        """
+        Creates an in-memory Excel workbook (.xlsx) containing all DataFrames as distinct sheets.
+        """
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+            for sheet_name, df in sheets_dict.items():
+                safe_name = self.sanitize_sheet_name(sheet_name)
+                df_to_save = df.copy()
+                df_to_save.columns = [str(c).strip() for c in df_to_save.columns]
+                df_to_save.to_excel(writer, sheet_name=safe_name, index=False)
+        buf.seek(0)
+        return buf.getvalue()
+
+    def save_multisheet_dataset_files(
+        self,
+        dataset_id: str,
+        workbook_bytes: bytes,
+        processed_df: pd.DataFrame,
+        filename_prefix: str
+    ) -> Tuple[str, str]:
+        """
+        Persists the multi-sheet Excel workbook as the raw dataset file and
+        the active sheet processed CSV to disk.
+        """
+        raw_filename = f"{dataset_id}_raw_{filename_prefix}.xlsx"
+        raw_path = os.path.join(UPLOAD_DIR, raw_filename)
+        with open(raw_path, 'wb') as f:
+            f.write(workbook_bytes)
+
+        proc_filename = f"{dataset_id}_processed_{filename_prefix}.csv"
+        proc_path = os.path.join(UPLOAD_DIR, proc_filename)
+        processed_df.to_csv(proc_path, index=False, encoding='utf-8')
+
+        return raw_path, proc_path
+
     def get_preview_data(self, file_path: str, limit: int = 100) -> Dict[str, Any]:
         """
-        Returns preview rows and column types for AG Grid.
+        Returns preview rows, column types, SQL types, and mixed column indicators for AG Grid.
         """
         df = pd.read_csv(file_path, nrows=limit, encoding='utf-8', on_bad_lines='skip')
         # Fill NaN for clean JSON serialization
         df_filled = df.where(pd.notnull(df), None)
         
         col_types = {}
+        sql_types = {}
+        mixed_cols = []
         for c in df.columns:
-            col_types[c] = self._detect_series_type(df[c])
+            is_mixed = self.is_mixed_number_and_text(df[c])
+            if is_mixed:
+                mixed_cols.append(c)
+                col_types[c] = "text"
+                sql_types[c] = "TEXT"
+            else:
+                detected = self._detect_series_type(df[c])
+                col_types[c] = detected
+                sql_types[c] = self._detect_sql_type(df[c], detected)
 
         return {
             "columns": list(df.columns),
             "rows": df_filled.to_dict(orient='records'),
             "total_columns": len(df.columns),
-            "column_types": col_types
+            "column_types": col_types,
+            "sql_types": sql_types,
+            "mixed_columns": mixed_cols
         }
 
 dataset_service = DatasetService()

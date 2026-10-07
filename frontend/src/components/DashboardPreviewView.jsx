@@ -3,11 +3,13 @@ import {
   Layers, Edit3, Share2, Maximize2, Minimize2, Check, RefreshCw,
   Palette, Database, ChevronLeft, ChevronRight, Menu,
   Compass, Sun, Moon, Box, Sliders, X, Sparkles, RotateCcw,
-  Shield, Activity, TrendingUp
+  Shield, Activity, TrendingUp, ArrowLeft, AlertCircle, Lightbulb
 } from 'lucide-react';
-import ChartTab from './ChartTab';
+import ChartTab, { calculateChartHeight } from './ChartTab';
 import KPICard from './KPICard';
 import ChartForecastModal from './ChartForecastModal';
+import MarkdownRenderer from './MarkdownRenderer';
+import { api } from '../api/client';
 import {
   THEME_TEMPLATES,
   CARD_STYLES,
@@ -34,7 +36,9 @@ export default function DashboardPreviewView({
   chartShadow: propChartShadow = null,
   shadowIntensity: propShadowIntensity = null,
   chartAnimation: propChartAnimation = null,
-  customTheme: propCustomTheme = null
+  customTheme: propCustomTheme = null,
+  cardInsightsMap: propCardInsightsMap = null,
+  onUpdateCardInsights = null
 }) {
   const defaultTheme = propTheme || dashboard?.settings?.theme || 'royal_indigo';
   const defaultCardStyle = propCardStyle || dashboard?.settings?.card_style || 'glass';
@@ -68,6 +72,62 @@ export default function DashboardPreviewView({
   // Chart-Based Forecasting Modal State
   const [selectedForecastCard, setSelectedForecastCard] = useState(null);
   const [localForecastMap, setLocalForecastMap] = useState({});
+
+  // Chart Insights State (Toggle view between chart and insight inside the same card)
+  const [cardViewModes, setCardViewModes] = useState({}); // cardId -> 'chart' | 'insight'
+  const [cardInsights, setCardInsights] = useState(propCardInsightsMap || {}); // cardId -> insight markdown
+  const [loadingInsights, setLoadingInsights] = useState({}); // cardId -> boolean
+  const [insightErrors, setInsightErrors] = useState({}); // cardId -> string error
+
+  useEffect(() => {
+    if (propCardInsightsMap) {
+      setCardInsights(prev => ({ ...prev, ...propCardInsightsMap }));
+    }
+  }, [propCardInsightsMap]);
+
+  const handleGenerateInsight = async (card, forceRegenerate = false) => {
+    const cardId = card.id;
+    // Set view to insight mode immediately so the card transitions seamlessly
+    setCardViewModes(prev => ({ ...prev, [cardId]: 'insight' }));
+
+    const existingInsight = cardInsights[cardId] || card.insights;
+    if (existingInsight && !forceRegenerate) {
+      return;
+    }
+
+    setLoadingInsights(prev => ({ ...prev, [cardId]: true }));
+    setInsightErrors(prev => ({ ...prev, [cardId]: null }));
+
+    const cardData = cardDataMap[cardId] || { columns: [], rows: [] };
+
+    try {
+      const res = await api.generateVisualizationInsights({
+        visualization_id: card.visualization_id || undefined,
+        dataset_id: dashboard?.project_id || card.dataset_id,
+        title: card.title,
+        chart_type: card.chart_type,
+        x_variable: card.x_variable || cardData.columns[0] || '',
+        y_variable: card.y_variable || cardData.columns[1] || '',
+        aggregated_data: cardData.rows || [],
+        columns: cardData.columns || []
+      });
+
+      const insightContent = res?.insights || 'No insights returned.';
+      setCardInsights(prev => ({ ...prev, [cardId]: insightContent }));
+      if (onUpdateCardInsights) {
+        onUpdateCardInsights(cardId, insightContent);
+      }
+    } catch (err) {
+      console.error(`Failed to generate insights for card ${cardId}:`, err);
+      setInsightErrors(prev => ({ ...prev, [cardId]: err.message || 'Failed to generate insights' }));
+    } finally {
+      setLoadingInsights(prev => ({ ...prev, [cardId]: false }));
+    }
+  };
+
+  const handleRestoreChart = (cardId) => {
+    setCardViewModes(prev => ({ ...prev, [cardId]: 'chart' }));
+  };
 
   const panelRef = useRef(null);
   const customizeBtnRef = useRef(null);
@@ -1096,12 +1156,24 @@ export default function DashboardPreviewView({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 sm:gap-6">
               {layout.map((card, idx) => {
-                const colSpan = Math.min(12, Math.max(1, card.col_span || card.width || (card.chart_type === 'Metric' ? 3 : 6)));
-                const isMetric = card.chart_type === 'Metric';
-                const defaultH = isMetric ? 140 : 360;
-                const cardHeight = card.height || defaultH;
+                const rawCol = card.col_span || card.width;
+                const colSpan = Math.min(
+                  12,
+                  Math.max(
+                    1,
+                    rawCol
+                      ? (rawCol <= 12 ? rawCol : Math.round(rawCol / 100))
+                      : (card.chart_type === 'Metric' ? 3 : 6)
+                  )
+                );
                 const cardData = cardDataMap[card.id] || { columns: [], rows: [] };
+                const isMetric = card.chart_type === 'Metric';
+                const defaultH = isMetric
+                  ? 140
+                  : Math.max(360, calculateChartHeight(card, cardData.rows, cardData.columns) + 40);
+                const cardHeight = card.height || defaultH;
                 const isLoadingData = !!loadingCardsMap[card.id];
+                const isViewingInsight = cardViewModes[card.id] === 'insight';
 
                 // Responsive grid style
                 const gridStyle = {
@@ -1174,6 +1246,42 @@ export default function DashboardPreviewView({
                           </div>
 
                           <div className="flex items-center space-x-1.5 shrink-0">
+                            {/* Generate Insight / Back Toggle Button */}
+                            {isViewingInsight ? (
+                              <button
+                                onClick={() => handleRestoreChart(card.id)}
+                                className="px-2.5 py-0.5 rounded-lg border text-[10px] font-bold flex items-center space-x-1 transition-all cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-[0.98]"
+                                style={{
+                                  borderColor: tokens.border,
+                                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)',
+                                  color: tokens.text.primary
+                                }}
+                                title="Restore Original Chart"
+                              >
+                                <ArrowLeft className="w-3 h-3" />
+                                <span>Back to Chart</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleGenerateInsight(card)}
+                                disabled={loadingInsights[card.id]}
+                                className="px-2.5 py-0.5 rounded-lg border text-[10px] font-bold flex items-center space-x-1 transition-all cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-[0.98]"
+                                style={{
+                                  borderColor: isDark ? 'rgba(139, 92, 246, 0.4)' : 'rgba(139, 92, 246, 0.3)',
+                                  backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.08)',
+                                  color: tokens.primary
+                                }}
+                                title="Generate AI insights from this chart's data"
+                              >
+                                {loadingInsights[card.id] ? (
+                                  <RefreshCw className="w-3 h-3 text-violet-500 animate-spin" />
+                                ) : (
+                                  <Sparkles className="w-3 h-3 text-amber-500" />
+                                )}
+                                <span>Generate Insight</span>
+                              </button>
+                            )}
+
                             {(localForecastMap[card.id] || card.ml_forecast) ? (
                               <button
                                 onClick={() => setSelectedForecastCard(card)}
@@ -1199,8 +1307,105 @@ export default function DashboardPreviewView({
                         </div>
 
                         {/* Chart Body */}
-                        <div className="p-3 flex-1 w-full relative min-h-0">
-                          {isLoadingData ? (
+                        <div className="p-3 flex-1 w-full relative min-h-0 overflow-hidden">
+                          {isViewingInsight ? (
+                            /* ── Dedicated Insight View replacing Chart inside the same Card ── */
+                            <div className="w-full h-full flex flex-col min-h-0 overflow-hidden">
+                              {/* Insight Toolbar Header with Back Button */}
+                              <div
+                                className="flex items-center justify-between pb-2 mb-2 border-b shrink-0"
+                                style={{ borderColor: tokens.border }}
+                              >
+                                <div className="flex items-center space-x-2">
+                                  <button
+                                    onClick={() => handleRestoreChart(card.id)}
+                                    className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 hover:opacity-80"
+                                    style={{
+                                      borderColor: tokens.border,
+                                      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+                                      color: tokens.text.primary
+                                    }}
+                                    title="Return to original chart view"
+                                  >
+                                    <ArrowLeft className="w-3.5 h-3.5" />
+                                    <span>Back</span>
+                                  </button>
+                                  <div
+                                    className="flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold"
+                                    style={{
+                                      backgroundColor: isDark ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.1)',
+                                      color: tokens.primary
+                                    }}
+                                  >
+                                    <Sparkles className="w-3 h-3 text-amber-500" />
+                                    <span>AI Insights</span>
+                                  </div>
+                                </div>
+
+                                {!loadingInsights[card.id] && (cardInsights[card.id] || card.insights) && (
+                                  <button
+                                    onClick={() => handleGenerateInsight(card, true)}
+                                    className="text-[10px] flex items-center space-x-1 transition-colors px-2 py-0.5 rounded cursor-pointer hover:opacity-80"
+                                    style={{ color: tokens.text.muted }}
+                                    title="Regenerate insights with fresh AI analysis"
+                                  >
+                                    <RefreshCw className="w-3 h-3" />
+                                    <span>Regenerate</span>
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Scrollable Insight Content Fitting Exactly within Card */}
+                              <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-2 text-xs custom-scrollbar">
+                                {loadingInsights[card.id] ? (
+                                  <div className="h-full min-h-[160px] flex flex-col items-center justify-center p-4 text-center space-y-3">
+                                    <div
+                                      className="p-3 rounded-2xl animate-pulse"
+                                      style={{ backgroundColor: isDark ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.1)' }}
+                                    >
+                                      <RefreshCw className="w-6 h-6 animate-spin text-violet-500" />
+                                    </div>
+                                    <div className="space-y-1 max-w-xs">
+                                      <p className="text-xs font-bold" style={{ color: tokens.text.primary }}>
+                                        Generating AI Insights...
+                                      </p>
+                                      <p className="text-[11px] leading-snug" style={{ color: tokens.text.muted }}>
+                                        Analyzing patterns, trends, and key findings from {card.title} data.
+                                      </p>
+                                    </div>
+                                  </div>
+                                ) : insightErrors[card.id] ? (
+                                  <div className="h-full min-h-[160px] flex flex-col items-center justify-center p-4 text-center space-y-3">
+                                    <div className="p-2.5 bg-rose-100 dark:bg-rose-950/60 rounded-xl text-rose-600 dark:text-rose-400">
+                                      <AlertCircle className="w-5 h-5" />
+                                    </div>
+                                    <p className="text-xs font-semibold text-rose-600 dark:text-rose-400 max-w-xs">
+                                      {insightErrors[card.id]}
+                                    </p>
+                                    <div className="flex items-center space-x-2">
+                                      <button
+                                        onClick={() => handleGenerateInsight(card, true)}
+                                        className="px-3 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs shadow-xs cursor-pointer"
+                                      >
+                                        Retry
+                                      </button>
+                                      <button
+                                        onClick={() => handleRestoreChart(card.id)}
+                                        className="px-3 py-1 rounded-lg border text-xs font-bold cursor-pointer"
+                                        style={{ borderColor: tokens.border, color: tokens.text.primary }}
+                                      >
+                                        Back to Chart
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="p-1">
+                                    <MarkdownRenderer content={cardInsights[card.id] || card.insights} />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : isLoadingData ? (
                             <div className="h-full flex items-center justify-center text-xs" style={{ color: tokens.text.muted }}>
                               <RefreshCw className="w-5 h-5 animate-spin mr-2" style={{ color: tokens.primary }} />
                               <span>Loading visualization...</span>
@@ -1212,7 +1417,7 @@ export default function DashboardPreviewView({
                                   chart_type: card.chart_type,
                                   title: '',
                                   x_axis: card.x_variable || cardData.columns[0],
-                                  y_axis: card.y_variable || cardData.columns[1],
+                                  y_variable: card.y_variable || cardData.columns[1],
                                   ml_forecast: localForecastMap[card.id] || card.ml_forecast
                                 }}
                                 columns={cardData.columns}

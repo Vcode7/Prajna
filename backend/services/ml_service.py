@@ -242,8 +242,8 @@ class MLService:
                 "classes": []
             }
 
-        # Check categorical / boolean
-        if dtype in ("categorical", "boolean"):
+        # Check categorical / boolean / text
+        if dtype in ("categorical", "boolean", "text"):
             classes = [str(c) for c in target_series.unique()[:20]]
             is_binary = unique_cnt == 2
             return {
@@ -418,8 +418,8 @@ INSTRUCTIONS:
                 encoded_data[col] = sample_df[col].astype(float).fillna(0.0)
                 eligible_cols.append(col)
 
-            # Categorical columns with reasonable cardinality (<= 30 distinct values, not IDs)
-            elif dtype == "categorical" or pd.api.types.is_object_dtype(sample_df[col]):
+            # Categorical / Text columns with reasonable cardinality (<= 30 distinct values, not IDs)
+            elif dtype in ("categorical", "text") or pd.api.types.is_object_dtype(sample_df[col]):
                 nunique = s.nunique()
                 # Exclude high-cardinality identifiers or text blobs
                 if 1 < nunique <= 30 and nunique < len(sample_df) * 0.7:
@@ -554,8 +554,8 @@ INSTRUCTIONS:
                 target = matched_col
                 target_reason = f"Identified '{target}' as primary predictive target based on key business outcome domain patterns."
             else:
-                # Check for categorical outcome with 2-10 unique classes
-                cat_target = next((c for c in reversed(available_cols) if col_meta.get(c, {}).get("data_type") in ("categorical", "boolean") and 2 <= df[c].nunique() <= 10), None)
+                # Check for categorical / text outcome with 2-10 unique classes
+                cat_target = next((c for c in reversed(available_cols) if col_meta.get(c, {}).get("data_type") in ("categorical", "boolean", "text") and 2 <= df[c].nunique() <= 10), None)
                 if cat_target:
                     target = cat_target
                     target_reason = f"Selected '{target}' as target category ({df[target].nunique()} distinct classes)."

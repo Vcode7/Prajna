@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import { useChatStore } from '../store/chatStore';
-import { DollarSign, Landmark, TrendingUp, ShoppingBag, Users, Globe, FolderHeart, LayoutGrid, X } from 'lucide-react';
+import { IndianRupee, Landmark, TrendingUp, ShoppingBag, Users, Globe, FolderHeart, LayoutGrid, X } from 'lucide-react';
 
 export default function DashboardView({ dashboardData = {}, onClose = () => { } }) {
   const { theme } = useChatStore();
@@ -13,10 +13,10 @@ export default function DashboardView({ dashboardData = {}, onClose = () => { } 
 
   const [instances, setInstances] = useState({});
 
-  // Helper to format currency
+  // Helper to format currency using Indian Rupee (INR)
   const formatCurrency = (val) => {
-    if (val === null || val === undefined) return '$0.00';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+    if (val === null || val === undefined) return '₹0.00';
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(val);
   };
 
   useEffect(() => {
@@ -190,7 +190,7 @@ export default function DashboardView({ dashboardData = {}, onClose = () => { } 
               </h3>
             </div>
             <div className="p-3 bg-emerald-500/10 rounded-xl text-emerald-500 group-hover:rotate-6 transition-transform">
-              <DollarSign className="w-6 h-6" />
+              <IndianRupee className="w-6 h-6" />
             </div>
             <div className="absolute right-0 bottom-0 w-24 h-24 bg-emerald-500/5 rounded-full translate-x-8 translate-y-8 filter blur-lg" />
           </div>

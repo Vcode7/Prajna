@@ -349,6 +349,88 @@ class ProjectService:
             }
         }
 
+    def fix_formatting_data(self, project_id: str, db: Session) -> Dict[str, Any]:
+        """
+        Scans all string/object columns for invisible and non-printable control characters
+        (tabs \\t, carriage returns \\r, line feeds \\n, NUL \\x00, and other Unicode control characters
+        in the C0/C1 ranges), removes ONLY those characters, and preserves all visible content
+        including spaces, punctuation, and normal text.
+
+        Returns a summary: total_cells_cleaned, affected_columns, total_rows, total_columns.
+        """
+        import re as _re
+        project = db.query(DatasetSession).filter(DatasetSession.id == project_id).first()
+        if not project:
+            raise ValueError("Project not found")
+        if not project.processed_file_path or not os.path.exists(project.processed_file_path):
+            raise ValueError("Project has no active dataset to clean")
+
+        df = dataset_service.read_csv_robust(project.processed_file_path)
+
+        # Regex: matches control characters except regular space (0x20)
+        # Covers: C0 controls (0x00-0x1F) except space (0x20), DEL (0x7F),
+        # C1 controls (0x80-0x9F), and Unicode Zs/Cc category chars
+        # We keep \x20 (normal space) intact.
+        _CTRL_CHARS = _re.compile(r'[\x00-\x1f\x7f-\x9f\u00ad\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060\ufeff]')
+
+        total_cells_cleaned = 0
+        affected_columns: Dict[str, int] = {}
+
+        str_cols = [c for c in df.columns if df[c].dtype == object]
+        for col in str_cols:
+            cells_in_col = 0
+            def _clean(val):
+                nonlocal cells_in_col
+                if not isinstance(val, str):
+                    return val
+                cleaned = _CTRL_CHARS.sub('', val)
+                if cleaned != val:
+                    cells_in_col += 1
+                return cleaned
+            df[col] = df[col].map(_clean)
+            if cells_in_col > 0:
+                affected_columns[col] = cells_in_col
+                total_cells_cleaned += cells_in_col
+
+        # Save cleaned CSV and rebuild SQLite
+        df.to_csv(project.processed_file_path, index=False)
+        try:
+            self.refresh_project_sqlite_db(project)
+        except Exception as sync_err:
+            logger.warning(f"Could not refresh SQLite DB after fix_formatting: {sync_err}")
+
+        # Re-profile metadata
+        col_meta, data_quality = dataset_service.profile_dataset(df)
+
+        history = list(project.data_transformations or [])
+        history.append({
+            "type": "fix_formatting",
+            "params": {},
+            "summary": f"Removed invisible/control characters from {total_cells_cleaned} cell(s) across {len(affected_columns)} column(s)",
+            "timestamp": pd.Timestamp.utcnow().isoformat()
+        })
+
+        project.column_metadata = col_meta
+        project.data_quality = data_quality
+        project.data_transformations = history
+        db.commit()
+        db.refresh(project)
+
+        return {
+            "status": "success",
+            "total_cells_cleaned": total_cells_cleaned,
+            "affected_columns": affected_columns,
+            "total_rows": len(df),
+            "total_columns": len(df.columns),
+            "message": (
+                f"Fixed formatting in {total_cells_cleaned} cell(s) across "
+                f"{len(affected_columns)} column(s): {', '.join(affected_columns.keys())}"
+                if affected_columns else "No invisible characters found. Data is already clean."
+            ),
+            "project": project.to_dict()
+        }
+
+
     def get_project_db_path(self, project_id: str) -> str:
         """Returns the filesystem path for the persistent project SQLite database."""
         safe_id = re.sub(r'[^a-zA-Z0-9_-]', '_', project_id)
@@ -390,9 +472,25 @@ class ProjectService:
             # 1. Load active processed sheet as 'dataset', 'data', 'df'
             if project.processed_file_path and os.path.exists(project.processed_file_path):
                 df = dataset_service.read_csv_robust(project.processed_file_path)
-                df.to_sql("dataset", conn, index=False, if_exists="replace")
-                df.to_sql("data", conn, index=False, if_exists="replace")
-                df.to_sql("df", conn, index=False, if_exists="replace")
+                df, _ = dataset_service.identify_and_convert_mixed_columns(df)
+
+                col_meta = project.column_metadata or {}
+                sqlite_dtypes = {}
+                for c in df.columns:
+                    m = col_meta.get(c, {})
+                    if (
+                        m.get("data_type") in ("text", "categorical")
+                        or m.get("converted_to_text")
+                        or m.get("has_mixed_types")
+                        or dataset_service.is_mixed_number_and_text(df[c])
+                    ):
+                        sqlite_dtypes[c] = "TEXT"
+                    elif m.get("sql_type"):
+                        sqlite_dtypes[c] = m["sql_type"]
+
+                df.to_sql("dataset", conn, index=False, if_exists="replace", dtype=sqlite_dtypes)
+                df.to_sql("data", conn, index=False, if_exists="replace", dtype=sqlite_dtypes)
+                df.to_sql("df", conn, index=False, if_exists="replace", dtype=sqlite_dtypes)
 
             # 2. If multi-sheet Excel file, load each sheet as a distinct table
             if project.file_path and os.path.exists(project.file_path) and dataset_service.is_excel_file(project.file_path):
@@ -402,7 +500,12 @@ class ProjectService:
                         table_name = re.sub(r'[^a-zA-Z0-9_]', '_', s).strip('_').lower()
                         if table_name:
                             sdf = dataset_service.read_excel_sheet(project.file_path, sheet_name=s)
-                            sdf.to_sql(table_name, conn, index=False, if_exists="replace")
+                            sdf, _ = dataset_service.identify_and_convert_mixed_columns(sdf)
+                            sheet_dtypes = {
+                                c: "TEXT" for c in sdf.columns
+                                if dataset_service.is_mixed_number_and_text(sdf[c]) or sdf[c].dtype == object
+                            }
+                            sdf.to_sql(table_name, conn, index=False, if_exists="replace", dtype=sheet_dtypes)
                 except Exception as e:
                     logger.warning(f"Could not load multi-sheet tables into persistent SQLite: {e}")
 
@@ -441,6 +544,67 @@ class ProjectService:
                     os.remove(target)
                 except Exception as e:
                     logger.warning(f"Could not delete project DB file {target}: {e}")
+
+    def get_project_schema(self, project_id: str, db: Session) -> Dict[str, Any]:
+        """
+        Returns full schema breakdown for the project's persistent SQLite database and tables,
+        including SQLite column types, detected data types, sample values, and mixed-type flags.
+        """
+        project = db.query(DatasetSession).filter(DatasetSession.id == project_id).first()
+        if not project:
+            raise ValueError("Project not found")
+
+        db_path = self.get_or_create_project_sqlite_db(project)
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        cursor = conn.cursor()
+
+        tables_info = {}
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        table_names = [row[0] for row in cursor.fetchall()]
+
+        col_meta = project.column_metadata or {}
+
+        for tbl in table_names:
+            cursor.execute(f"PRAGMA table_info(`{tbl}`)")
+            pragma_cols = cursor.fetchall()
+            
+            cursor.execute(f"SELECT COUNT(*) FROM `{tbl}`")
+            row_count = cursor.fetchone()[0]
+
+            cols_dict = {}
+            for pcol in pragma_cols:
+                col_name = pcol[1]
+                sql_type = pcol[2] or "TEXT"
+                m = col_meta.get(col_name, {})
+                cols_dict[col_name] = {
+                    "name": col_name,
+                    "sql_type": sql_type,
+                    "data_type": m.get("data_type") or ("numerical" if sql_type in ("INTEGER", "REAL") else "text"),
+                    "converted_to_text": m.get("converted_to_text", False),
+                    "has_mixed_types": m.get("has_mixed_types", False),
+                    "null_count": m.get("null_count", 0),
+                    "null_pct": m.get("null_pct", 0),
+                    "unique_count": m.get("unique_count", 0),
+                    "sample_values": m.get("sample_values", []),
+                    "primary_key": bool(pcol[5]),
+                    "not_null": bool(pcol[3])
+                }
+
+            tables_info[tbl] = {
+                "table_name": tbl,
+                "row_count": row_count,
+                "column_count": len(cols_dict),
+                "columns": cols_dict
+            }
+
+        conn.close()
+        return {
+            "project_id": project.id,
+            "project_name": project.name,
+            "active_table": "dataset",
+            "tables": tables_info,
+            "column_metadata": col_meta
+        }
 
     def query_project_data(
         self,

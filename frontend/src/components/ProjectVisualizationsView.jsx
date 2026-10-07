@@ -2,19 +2,59 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '../store/chatStore';
 import { api } from '../api/client';
-import ChartTab from './ChartTab';
+import ChartTab, { calculateChartHeight } from './ChartTab';
 import MarkdownRenderer from './MarkdownRenderer';
 import {
   BarChart3, Plus, Edit3, Trash2, Copy, BrainCircuit, Lightbulb,
   RefreshCw, Send, Check, X, Sliders, CheckSquare, Square,
   Sparkles, Terminal, Table, LayoutDashboard,
-  ChevronDown, ChevronUp, Wand2, TrendingUp, CheckCircle2, Circle, AlertCircle
+  ChevronDown, ChevronUp, Wand2, TrendingUp, CheckCircle2, Circle, AlertCircle,
+  ArrowLeft
 } from 'lucide-react';
 
 const CHART_TYPES = [
   'Bar', 'Horizontal Bar', 'Line', 'Area', 'Pie', 'Donut',
   'Scatter', 'Stacked Bar', 'Stacked Area', 'Treemap', 'Metric'
 ];
+
+const getRefinementOptions = (chart) => {
+  if (!chart) return [];
+  const currType = (chart.chart_type || 'Bar').toLowerCase();
+  const suggestions = [];
+
+  if (currType.includes('bar') && !currType.includes('horizontal')) {
+    suggestions.push('Change to Line chart');
+    suggestions.push('Change to Horizontal Bar chart');
+    suggestions.push('Change to Donut chart');
+    suggestions.push('Change to Area chart');
+  } else if (currType.includes('horizontal')) {
+    suggestions.push('Change to vertical Bar chart');
+    suggestions.push('Change to Donut chart');
+    suggestions.push('Change to Line chart');
+  } else if (currType.includes('line')) {
+    suggestions.push('Change to Bar chart');
+    suggestions.push('Change to Area chart');
+    suggestions.push('Change to Scatter plot');
+  } else if (currType.includes('pie') || currType.includes('donut')) {
+    suggestions.push('Change to Bar chart');
+    suggestions.push('Change to Treemap');
+    suggestions.push('Change to Horizontal Bar chart');
+  } else if (currType.includes('area')) {
+    suggestions.push('Change to Line chart');
+    suggestions.push('Change to Bar chart');
+    suggestions.push('Change to Stacked Area chart');
+  } else {
+    suggestions.push('Change to Bar chart');
+    suggestions.push('Change to Line chart');
+    suggestions.push('Change to Donut chart');
+  }
+
+  suggestions.push('Sort descending by value');
+  suggestions.push('Show top 10 items only');
+  suggestions.push('Add an average threshold line');
+
+  return suggestions;
+};
 
 export default function ProjectVisualizationsView() {
   const navigate = useNavigate();
@@ -36,6 +76,7 @@ export default function ProjectVisualizationsView() {
   const [visDataMap, setVisDataMap] = useState({});
   const [loadingDataMap, setLoadingDataMap] = useState({});
   const [loadingInsightsMap, setLoadingInsightsMap] = useState({});
+  const [visViewModes, setVisViewModes] = useState({}); // visId -> 'chart' | 'insight'
 
   // Two-Stage AI Visualization Generation Progressive State
   const [aiGenerationProgress, setAiGenerationProgress] = useState({
@@ -294,7 +335,7 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
   };
 
   // AI Chat Handler
-  const handleSendAiChatMessage = async (promptToSend) => {
+  const handleSendAiChatMessage = async (promptToSend = null, chartContext = null) => {
     const text = (typeof promptToSend === 'string' ? promptToSend : aiChatInput).trim();
     if (!text || !activeProjectId || aiChatLoading) return;
 
@@ -312,10 +353,14 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
     try {
       const history = aiChatMessages
         .filter(m => m.id !== 'welcome')
+        .slice(-3)
         .map(m => ({
+          role: m.sender === 'user' ? 'user' : 'assistant',
           sender: m.sender,
           content: m.content || m.answer || ''
         }));
+
+      const specToUse = chartContext || currentActiveSpec;
 
       const res = await api.chatVisualizationAssistant({
         dataset_id: activeProjectId,
@@ -323,8 +368,8 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
         user_prompt: text,
         history: history,
         conversation_history: history,
-        current_spec: currentActiveSpec,
-        current_chart_spec: currentActiveSpec,
+        current_spec: specToUse,
+        current_chart_spec: specToUse,
         model: settings?.model
       });
 
@@ -410,6 +455,8 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
 
   const handleGenerateInsights = async (vis) => {
     const data = visDataMap[vis.id] || { columns: [], rows: [] };
+    // Immediately display insight view so loading state shows inside chart area
+    setVisViewModes(prev => ({ ...prev, [vis.id]: 'insight' }));
     setLoadingInsightsMap(prev => ({ ...prev, [vis.id]: true }));
     try {
       const res = await api.generateVisualizationInsights({
@@ -429,6 +476,13 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
     } finally {
       setLoadingInsightsMap(prev => ({ ...prev, [vis.id]: false }));
     }
+  };
+
+  const toggleInsightView = (visId) => {
+    setVisViewModes(prev => ({
+      ...prev,
+      [visId]: prev[visId] === 'insight' ? 'chart' : 'insight'
+    }));
   };
 
   const openAddToDashboardModal = async (vis) => {
@@ -1082,6 +1136,7 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
                 const chartData = visDataMap[vis.id] || { columns: [], rows: [] };
                 const isLoadingData = loadingDataMap[vis.id];
                 const isGeneratingInsights = loadingInsightsMap[vis.id];
+                const isViewingInsight = visViewModes[vis.id] === 'insight';
 
                 return (
                   <div
@@ -1120,30 +1175,43 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
 
                       {/* Actions */}
                       <div className="flex items-center space-x-1 shrink-0">
+                        {vis.insights && (
+                          <button
+                            onClick={() => toggleInsightView(vis.id)}
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              isViewingInsight
+                                ? 'text-violet-600 bg-violet-100 dark:bg-violet-950/80'
+                                : 'text-slate-400 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                            title={isViewingInsight ? "Switch to chart view" : "View generated insights"}
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           onClick={() => openAddToDashboardModal(vis)}
-                          className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                           title="Add to Dashboard"
                         >
                           <LayoutDashboard className="w-3.5 h-3.5 text-violet-500" />
                         </button>
                         <button
                           onClick={() => openEditor(vis)}
-                          className="p-1.5 text-slate-400 hover:text-violet-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                          className="p-1.5 text-slate-400 hover:text-violet-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                           title="Edit Chart"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleDuplicateVis(vis)}
-                          className="p-1.5 text-slate-400 hover:text-sky-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                          className="p-1.5 text-slate-400 hover:text-sky-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                           title="Duplicate"
                         >
                           <Copy className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleDeleteVis(vis.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                          className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                           title="Delete"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1151,44 +1219,101 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
                       </div>
                     </div>
 
-                    {/* Chart Body */}
-                    <div className="p-4 flex-1 min-h-[260px]">
-                      {isLoadingData ? (
-                        <div className="h-60 flex items-center justify-center text-xs text-slate-400">
-                          <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                          <span>Aggregating data...</span>
-                        </div>
-                      ) : chartData.rows && chartData.rows.length > 0 ? (
-                        <div className="h-60 w-full">
-                          <ChartTab
-                            chartConfig={{
-                              chart_type: vis.chart_type,
-                              title: vis.title,
-                              x_axis: vis.x_variable || chartData.columns[0],
-                              y_axis: (vis.y_variable && vis.y_variable !== vis.x_variable)
-                                ? vis.y_variable
-                                : (chartData.columns?.find(c => c !== (vis.x_variable || chartData.columns[0])) || 'count')
-                            }}
-                            columns={chartData.columns}
-                            rows={chartData.rows}
-                          />
-                        </div>
-                      ) : (
-                        <div className="h-60 flex items-center justify-center text-xs text-slate-400">
-                          No data returned for this chart configuration.
-                        </div>
-                      )}
+                    {/* Chart / Insight Body */}
+                    {(() => {
+                      const chartConfigObj = {
+                        chart_type: vis.chart_type,
+                        title: vis.title,
+                        x_axis: vis.x_variable || chartData.columns?.[0],
+                        y_axis: (vis.y_variable && vis.y_variable !== vis.x_variable)
+                          ? vis.y_variable
+                          : (chartData.columns?.find(c => c !== (vis.x_variable || chartData.columns?.[0])) || 'count')
+                      };
+                      const cardChartHeight = calculateChartHeight(chartConfigObj, chartData.rows, chartData.columns);
 
-                      {vis.insights && (
-                        <div className="mt-4 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-xs">
-                          <div className="flex items-center space-x-1.5 font-bold text-violet-600 dark:text-violet-400 mb-2">
-                            <Sparkles className="w-3.5 h-3.5" />
-                            <span>AI Visualization Insights</span>
-                          </div>
-                          <MarkdownRenderer content={vis.insights} />
+                      return (
+                        <div className="p-4 flex-1 flex flex-col" style={{ minHeight: `${cardChartHeight + 16}px` }}>
+                          {isViewingInsight ? (
+                            <div
+                              className="w-full relative flex flex-col bg-slate-50/70 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-800 p-3 overflow-hidden"
+                              style={{ height: `${cardChartHeight}px` }}
+                            >
+                              {/* Insight Top Control Bar */}
+                              <div className="flex items-center justify-between pb-2 border-b border-slate-200/80 dark:border-slate-800 shrink-0">
+                                <div className="flex items-center space-x-2">
+                                  <button
+                                    onClick={() => toggleInsightView(vis.id)}
+                                    className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
+                                    title="Return to original chart view"
+                                  >
+                                    <ArrowLeft className="w-3.5 h-3.5" />
+                                    <span>Back to Chart</span>
+                                  </button>
+                                  <div className="flex items-center space-x-1 px-2 py-0.5 rounded-md bg-violet-100/80 dark:bg-violet-950/80 text-violet-700 dark:text-violet-300 text-[10px] font-extrabold">
+                                    <Sparkles className="w-3 h-3 text-amber-500" />
+                                    <span>AI Insights</span>
+                                  </div>
+                                </div>
+
+                                {!isGeneratingInsights && (
+                                  <button
+                                    onClick={() => handleGenerateInsights(vis)}
+                                    className="text-[11px] text-slate-500 hover:text-violet-600 dark:text-slate-400 dark:hover:text-violet-400 flex items-center space-x-1 transition-colors px-2 py-0.5 rounded-md hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
+                                    title="Regenerate insights with fresh AI analysis"
+                                  >
+                                    <RefreshCw className="w-3 h-3" />
+                                    <span>Regenerate</span>
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Scrollable Insight Content Fitting Exactly within Chart Area */}
+                              <div className="flex-1 min-h-0 overflow-y-auto pr-1 mt-2 text-xs custom-scrollbar">
+                                {isGeneratingInsights ? (
+                                  <div className="h-full min-h-[160px] flex flex-col items-center justify-center p-4 text-center space-y-2.5">
+                                    <div className="p-2.5 bg-violet-100 dark:bg-violet-900/40 rounded-2xl text-violet-600 dark:text-violet-400 animate-pulse">
+                                      <RefreshCw className="w-5 h-5 animate-spin" />
+                                    </div>
+                                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                      Generating AI Insights...
+                                    </p>
+                                    <p className="text-[11px] text-slate-400 max-w-xs">
+                                      Analyzing patterns, trends, and takeaways from {vis.title}...
+                                    </p>
+                                  </div>
+                                ) : vis.insights ? (
+                                  <div className="p-1">
+                                    <MarkdownRenderer content={vis.insights} />
+                                  </div>
+                                ) : (
+                                  <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">
+                                    No insights generated yet.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : isLoadingData ? (
+                            <div className="flex items-center justify-center text-xs text-slate-400" style={{ height: `${cardChartHeight}px` }}>
+                              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                              <span>Aggregating data...</span>
+                            </div>
+                          ) : chartData.rows && chartData.rows.length > 0 ? (
+                            <div className="w-full" style={{ height: `${cardChartHeight}px` }}>
+                              <ChartTab
+                                chartConfig={chartConfigObj}
+                                columns={chartData.columns}
+                                rows={chartData.rows}
+                                style={{ height: `${cardChartHeight}px` }}
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center text-xs text-slate-400" style={{ height: `${cardChartHeight}px` }}>
+                              No data returned for this chart configuration.
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })()}
 
                     {/* Footer Actions */}
                     <div className="p-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 flex items-center justify-between gap-2">
@@ -1196,15 +1321,39 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
                         <button
                           onClick={() => handleGenerateInsights(vis)}
                           disabled={isGeneratingInsights}
-                          className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5 transition-all disabled:opacity-50"
+                          className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5 transition-all disabled:opacity-50 cursor-pointer"
                         >
                           {isGeneratingInsights ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Lightbulb className="w-3.5 h-3.5 text-amber-500" />}
                           <span>{vis.insights ? 'Regenerate Insights' : 'Generate Insights'}</span>
                         </button>
 
+                        {vis.insights && (
+                          <button
+                            onClick={() => toggleInsightView(vis.id)}
+                            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer ${
+                              isViewingInsight
+                                ? 'bg-violet-600 border-violet-600 text-white shadow-xs'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-violet-500 hover:text-violet-600'
+                            }`}
+                            title={isViewingInsight ? "Switch to chart view" : "View generated insights"}
+                          >
+                            {isViewingInsight ? (
+                              <>
+                                <BarChart3 className="w-3.5 h-3.5" />
+                                <span>View Chart</span>
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                                <span>View Insight</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+
                         <button
                           onClick={() => openAddToDashboardModal(vis)}
-                          className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 text-xs font-semibold flex items-center space-x-1.5 transition-all"
+                          className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer"
                         >
                           <LayoutDashboard className="w-3.5 h-3.5 text-violet-500" />
                           <span>Add to Dashboard</span>
@@ -1341,122 +1490,150 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
                       )}
 
                       {/* Live Rendered Chart (for Visualization Responses) */}
-                      {isChart && msg.chart && (
-                        <div className="mt-4 p-4 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
-                          
-                          {/* Chart Top Bar */}
-                          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
-                            <div className="flex items-center space-x-2">
-                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-violet-100 dark:bg-violet-950 text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-800">
-                                {msg.chart.chart_type || 'Bar'}
-                              </span>
-                              <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-sm">
-                                {msg.chart.title}
-                              </h4>
-                            </div>
+                      {isChart && msg.chart && (() => {
+                        const chartConfigObj = {
+                          chart_type: msg.chart.chart_type || 'Bar',
+                          title: msg.chart.title,
+                          x_axis: msg.chart.x_variable || msg.chart.columns?.[0],
+                          y_axis: (msg.chart.y_variable && msg.chart.y_variable !== msg.chart.x_variable)
+                            ? msg.chart.y_variable
+                            : (msg.chart.columns?.find(c => c !== (msg.chart.x_variable || msg.chart.columns?.[0])) || 'count')
+                        };
+                        const calculatedH = calculateChartHeight(
+                          chartConfigObj,
+                          msg.chart.rows || [],
+                          msg.chart.columns || [],
+                          msg.chart.chart_type || 'Bar'
+                        );
+                        const chatChartHeight = Math.max(380, Math.min(640, calculatedH));
+                        const refinementList = getRefinementOptions(msg.chart);
 
-                            {/* Chart Save & Dashboard Actions */}
-                            <div className="flex items-center space-x-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleSaveChatChartToVisualizations(msg.chart, msg.id)}
-                                disabled={!!isSaved}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all shadow-xs ${
-                                  isSaved
-                                    ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 cursor-default'
-                                    : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-violet-500/20 active:scale-95'
-                                }`}
-                              >
-                                {isSaved ? (
-                                  <>
-                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                    <span>Saved to Visualizations</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Plus className="w-3.5 h-3.5" />
-                                    <span>Add to Visualization</span>
-                                  </>
-                                )}
-                              </button>
+                        return (
+                          <div className="mt-4 space-y-3">
 
-                              <button
-                                type="button"
-                                onClick={() => openAddToDashboardModal({
-                                  title: msg.chart.title,
-                                  chart_type: msg.chart.chart_type,
-                                  x_variable: msg.chart.x_variable,
-                                  y_variable: msg.chart.y_variable,
-                                  aggregation: msg.chart.aggregation,
-                                  sql: msg.chart.sql,
-                                  configuration: { sql: msg.chart.sql }
-                                })}
-                                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center space-x-1.5 transition-colors"
-                              >
-                                <LayoutDashboard className="w-3.5 h-3.5 text-violet-500" />
-                                <span>Add to Dashboard</span>
-                              </button>
+                            {/* ── Chart Card ── */}
+                            <div className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 overflow-hidden">
+                              
+                              {/* Chart Top Bar */}
+                              <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800/80">
+                                <div className="flex items-center space-x-2 min-w-0">
+                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-violet-100 dark:bg-violet-950 text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-800 shrink-0">
+                                    {msg.chart.chart_type || 'Bar'}
+                                  </span>
+                                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-sm">
+                                    {msg.chart.title}
+                                  </h4>
+                                </div>
 
-                              {isSaved && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setMainVisTab('visualizations');
-                                    setActiveCategory(msg.chart.category || 'all');
-                                  }}
-                                  className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-violet-600 dark:text-violet-400 hover:underline flex items-center space-x-1"
-                                >
-                                  <span>View Tab →</span>
-                                </button>
-                              )}
-                            </div>
-                          </div>
+                                {/* Chart Save & Dashboard Actions */}
+                                <div className="flex items-center space-x-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveChatChartToVisualizations(msg.chart, msg.id)}
+                                    disabled={!!isSaved}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all shadow-xs ${
+                                      isSaved
+                                        ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 cursor-default'
+                                        : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-violet-500/20 active:scale-95'
+                                    }`}
+                                  >
+                                    {isSaved ? (
+                                      <>
+                                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span>Saved to Visualizations</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Plus className="w-3.5 h-3.5" />
+                                        <span>Add to Visualization</span>
+                                      </>
+                                    )}
+                                  </button>
 
-                          {/* Live Chart Container */}
-                          <div className="h-72 w-full">
-                            {msg.chart.rows && msg.chart.rows.length > 0 ? (
-                              <ChartTab
-                                chartConfig={{
-                                  chart_type: msg.chart.chart_type || 'Bar',
-                                  title: msg.chart.title,
-                                  x_axis: msg.chart.x_variable || msg.chart.columns?.[0],
-                                  y_axis: (msg.chart.y_variable && msg.chart.y_variable !== msg.chart.x_variable)
-                                    ? msg.chart.y_variable
-                                    : (msg.chart.columns?.find(c => c !== (msg.chart.x_variable || msg.chart.columns?.[0])) || 'count')
+                                  <button
+                                    type="button"
+                                    onClick={() => openAddToDashboardModal({
+                                      title: msg.chart.title,
+                                      chart_type: msg.chart.chart_type,
+                                      x_variable: msg.chart.x_variable,
+                                      y_variable: msg.chart.y_variable,
+                                      aggregation: msg.chart.aggregation,
+                                      sql: msg.chart.sql,
+                                      configuration: { sql: msg.chart.sql }
+                                    })}
+                                    className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center space-x-1.5 transition-colors"
+                                  >
+                                    <LayoutDashboard className="w-3.5 h-3.5 text-violet-500" />
+                                    <span>Add to Dashboard</span>
+                                  </button>
+
+                                  {isSaved && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setMainVisTab('visualizations');
+                                        setActiveCategory(msg.chart.category || 'all');
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-violet-600 dark:text-violet-400 hover:underline flex items-center space-x-1"
+                                    >
+                                      <span>View Tab →</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Live Chart Container — guaranteed ample height with zero overflow */}
+                              <div
+                                className="w-full relative overflow-hidden"
+                                style={{
+                                  height: `${chatChartHeight}px`,
+                                  minHeight: `${chatChartHeight}px`
                                 }}
-                                columns={msg.chart.columns || []}
-                                rows={msg.chart.rows}
-                              />
-                            ) : (
-                              <div className="h-full flex items-center justify-center text-xs text-slate-400">
-                                No rows returned for chart display.
+                              >
+                                {msg.chart.rows && msg.chart.rows.length > 0 ? (
+                                  <ChartTab
+                                    chartConfig={chartConfigObj}
+                                    columns={msg.chart.columns || []}
+                                    rows={msg.chart.rows}
+                                    style={{
+                                      height: `${chatChartHeight}px`,
+                                      minHeight: `${chatChartHeight}px`
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                                    No rows returned for chart display.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* ── Follow-up & Refinement Suggestions — Clean separated card below chart ── */}
+                            {refinementList.length > 0 && (
+                              <div className="p-3.5 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/90 dark:border-slate-700/80 space-y-2">
+                                <div className="flex items-center space-x-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                                  <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+                                  <span>Suggested Follow-ups &amp; Refinements:</span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {refinementList.map((refineText, rIdx) => (
+                                    <button
+                                      key={rIdx}
+                                      type="button"
+                                      onClick={() => handleSendAiChatMessage(refineText, msg.chart)}
+                                      disabled={aiChatLoading}
+                                      className="text-xs px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 hover:bg-violet-50 dark:hover:bg-violet-950/70 hover:text-violet-600 dark:hover:text-violet-300 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-medium transition-all shadow-xs hover:border-violet-300 dark:hover:border-violet-700 active:scale-95 disabled:opacity-50"
+                                    >
+                                      {refineText}
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
                             )}
-                          </div>
 
-                          {/* Refinement Chips for follow-up */}
-                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-1.5">
-                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Refine:</span>
-                            {[
-                              'Change this to a Bar chart',
-                              'Change this to a Line chart',
-                              'Change this to a Donut chart',
-                              'Group it by plant',
-                              'Add a trend line',
-                              'Sort descending by value'
-                            ].map((refineText, rIdx) => (
-                              <button
-                                key={rIdx}
-                                type="button"
-                                onClick={() => handleSendAiChatMessage(refineText)}
-                                className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-violet-100 dark:hover:bg-violet-950 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors"
-                              >
-                                {refineText}
-                              </button>
-                            ))}
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       {/* Result Data Table Toggle (for data questions) */}
                       {msg.data_preview && msg.data_preview.rows && msg.data_preview.rows.length > 0 && (
@@ -1745,6 +1922,7 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
                       }}
                       columns={editorPreviewData.columns}
                       rows={editorPreviewData.rows}
+                      style={{ height: '256px' }}
                     />
                   ) : null}
                 </div>

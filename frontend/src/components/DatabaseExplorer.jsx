@@ -3,7 +3,7 @@ import { useChatStore } from '../store/chatStore';
 import { api } from '../api/client';
 import {
   Database, Table, Key, Eye, Info, ChevronDown, ChevronRight, Hash, Type,
-  ShoppingCart, Package, Truck, Factory, DollarSign, Users, Headphones, Layers
+  ShoppingCart, Package, Truck, Factory, IndianRupee, Users, Headphones, Layers
 } from 'lucide-react';
 
 const MODULE_DEFINITIONS = [
@@ -38,7 +38,7 @@ const MODULE_DEFINITIONS = [
   {
     key: 'finance',
     title: 'Finance & Budgeting',
-    icon: DollarSign,
+    icon: IndianRupee,
     color: 'text-indigo-500',
     tables: ['expenses', 'budgets', 'payments']
   },

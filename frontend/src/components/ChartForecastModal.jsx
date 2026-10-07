@@ -32,7 +32,7 @@ export default function ChartForecastModal({
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [activeModelId, setActiveModelId] = useState(null);
 
-  const chartId = chart?.id || chart?.visualization_id;
+  const chartId = chart?.visualization_id || chart?.id;
 
   // Load history whenever modal opens or chart changes
   useEffect(() => {
@@ -144,6 +144,21 @@ export default function ChartForecastModal({
     const allDates = [...dates, ...futureDates];
     const actualSeries = [...actuals, ...futureDates.map(() => null)];
 
+    const isFinancial = /revenue|sales|price|cost|profit|amount|budget|salary|spend|rupee|inr/i.test(chart?.title || '');
+    const curPrefix = isFinancial ? '₹' : '';
+
+    const formatForecastVal = (v) => {
+      if (v === null || v === undefined) return '';
+      const num = Number(v);
+      if (isNaN(num)) return String(v);
+      const abs = Math.abs(num);
+      const sign = num < 0 ? '-' : '';
+      if (abs >= 1e7) return `${sign}${curPrefix}${(abs / 1e7).toFixed(2).replace(/\.?0+$/, '')} Cr`;
+      if (abs >= 1e5) return `${sign}${curPrefix}${(abs / 1e5).toFixed(2).replace(/\.?0+$/, '')} L`;
+      if (abs >= 1e3) return `${sign}${curPrefix}${(abs / 1e3).toFixed(1).replace(/\.?0+$/, '')} K`;
+      return `${sign}${curPrefix}${abs.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+    };
+
     const option = {
       tooltip: {
         trigger: 'axis',
@@ -152,10 +167,13 @@ export default function ChartForecastModal({
           let html = `<div style="font-weight:bold;margin-bottom:4px;">${params[0]?.axisValue || ''}</div>`;
           params.forEach(p => {
             if (p.value !== null && p.value !== undefined) {
+              const valStr = typeof p.value === 'number'
+                ? `${curPrefix}${p.value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+                : p.value;
               html += `<div style="display:flex;align-items:center;gap:6px;font-size:11px;">
                 <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};"></span>
                 <span>${p.seriesName}:</span>
-                <b>${typeof p.value === 'number' ? p.value.toLocaleString() : p.value}</b>
+                <b>${valStr}</b>
               </div>`;
             }
           });
@@ -175,7 +193,10 @@ export default function ChartForecastModal({
       },
       yAxis: {
         type: 'value',
-        axisLabel: { fontSize: 10 }
+        axisLabel: {
+          fontSize: 10,
+          formatter: (val) => formatForecastVal(val)
+        }
       },
       series: [
         {

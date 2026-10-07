@@ -143,9 +143,10 @@ INSTRUCTIONS:
 2. Use Markdown headings (`## Executive Summary`, `### Key Findings`, `### Business Impact`, `### Recommended Next Actions`).
 3. Use bullet lists (`- `) and numbered lists (`1. `) for structured insights.
 4. Use **bold text** for critical numbers, totals, percentages, and metrics.
-5. Use Markdown blockquotes (`> Key Takeaway: ...`) to emphasize strategic observations.
-6. Use Markdown tables (`| Metric | Value | ... |`) if comparing multiple data points.
-7. Suggest 3 follow-up business questions.
+5. CURRENCY & NUMBERING METRICS: ALWAYS use the Indian Rupee symbol (`₹`) instead of `$` for all financial/monetary values. ALWAYS use the Indian numbering system (Crores `Cr`, Lakhs `L` / `Lakh`, and Indian comma notation like `12,34,567`) instead of the Western Millions/Billions dollar system.
+6. Use Markdown blockquotes (`> Key Takeaway: ...`) to emphasize strategic observations.
+7. Use Markdown tables (`| Metric | Value | ... |`) if comparing multiple data points.
+8. Suggest 3 follow-up business questions.
 
 Do NOT output JSON. Make the tone helpful, analytical, and authoritative.
 """

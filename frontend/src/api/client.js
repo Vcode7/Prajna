@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
@@ -46,9 +46,22 @@ export const api = {
   getDashboardStats: () => request('/dashboard/stats'),
 
   // ── Datasets ───────────────────────────────────────────────
-  uploadDataset: async (file, name, projectId, sheetName) => {
+  uploadDataset: async (fileOrFiles, name, projectId, sheetName) => {
     const formData = new FormData();
-    formData.append('file', file);
+    if (Array.isArray(fileOrFiles)) {
+      fileOrFiles.forEach(f => formData.append('files', f));
+      if (fileOrFiles.length > 0) {
+        formData.append('file', fileOrFiles[0]);
+      }
+    } else if (typeof FileList !== 'undefined' && fileOrFiles instanceof FileList) {
+      Array.from(fileOrFiles).forEach(f => formData.append('files', f));
+      if (fileOrFiles.length > 0) {
+        formData.append('file', fileOrFiles[0]);
+      }
+    } else if (fileOrFiles) {
+      formData.append('file', fileOrFiles);
+      formData.append('files', fileOrFiles);
+    }
     if (name) formData.append('name', name);
     if (projectId) formData.append('project_id', projectId);
     if (sheetName) formData.append('sheet_name', sheetName);
@@ -74,6 +87,11 @@ export const api = {
   }),
   deleteDataset: (id) => request(`/datasets/${id}`, { method: 'DELETE' }),
   exportDatasetUrl: (id) => `${API_BASE}/datasets/${id}/export`,
+  getColumnUniqueValues: (id, column) => request(`/datasets/${id}/column-unique-values/${encodeURIComponent(column)}`),
+  fixDatasetFormatting: (id) => request(`/datasets/${id}/fix-formatting`, { method: 'POST' }),
+  getDatasetSchema: (id) => request(`/datasets/${id}/schema`),
+  getProjectSchema: (id) => request(`/projects/${id}/schema`),
+  getSchema: () => request('/schema'),
 
   // ── Visualizations ──────────────────────────────────────────
   listVisualizations: (datasetId, category) => {
@@ -87,6 +105,18 @@ export const api = {
   queryVisualizationData: (params) => request('/visualizations/query-data', { method: 'POST', body: JSON.stringify(params) }),
   chatToVisualizationSpec: (params) => request('/visualizations/chat-to-spec', { method: 'POST', body: JSON.stringify(params) }),
   generateVisualizationInsights: (params) => request('/visualizations/insights', { method: 'POST', body: JSON.stringify(params) }),
+  generateWidgetInsights: (widgetId, title, sql, columns, rows, rowCount, model) =>
+    request('/visualizations/insights', {
+      method: 'POST',
+      body: JSON.stringify({
+        visualization_id: widgetId,
+        title: title || 'Chart',
+        chart_type: 'Bar',
+        aggregated_data: rows || [],
+        columns: columns || [],
+        model
+      })
+    }),
   generateAiImportantVisualizations: (datasetId, model) =>
     request('/visualizations/generate-ai-important', { method: 'POST', body: JSON.stringify({ dataset_id: datasetId, model }) }),
   generateAiImportantVisualizationsStream: async (datasetId, model, onEvent) => {

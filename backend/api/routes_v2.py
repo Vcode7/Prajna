@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import json
 import logging
 import pandas as pd
@@ -8,6 +9,7 @@ from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from backend.database.session import get_db
 from backend.models.models import (
@@ -54,45 +56,161 @@ router = APIRouter()
 
 @router.post("/datasets/upload", response_model=DatasetResponse)
 async def upload_dataset(
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(default=[]),
+    file: Optional[UploadFile] = File(None),
     name: Optional[str] = Form(None),
     project_id: Optional[str] = Form(None),
     sheet_name: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
-    Uploads CSV or Excel dataset, detects multiple sheets, profiles schema, checks data quality,
-    generates derived features, and automatically populates initial recommended visualizations.
+    Uploads single or multiple CSV/Excel datasets. When multiple files are uploaded,
+    each file is loaded as an individual sheet within a unified multi-sheet workbook,
+    enabling seamless cross-sheet switching and multi-table queries.
     """
     try:
-        content = await file.read()
+        upload_list: List[UploadFile] = []
+        if files:
+            for f in files:
+                if f and f.filename and f.filename.strip():
+                    upload_list.append(f)
+        if file and file.filename and file.filename.strip():
+            if not any(f.filename == file.filename for f in upload_list):
+                upload_list.append(file)
+
+        if not upload_list:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+        # ── Case A: Multiple Files (Package each file as a distinct sheet) ──
+        if len(upload_list) > 1:
+            all_sheets: Dict[str, pd.DataFrame] = {}
+            existing_sheet_names: set = set()
+            total_bytes = 0
+            all_filenames = []
+
+            for uf in upload_list:
+                content = await uf.read()
+                if len(content) == 0:
+                    continue
+                total_bytes += len(content)
+                all_filenames.append(uf.filename)
+                file_base = os.path.splitext(uf.filename)[0].replace("_", " ").title()
+
+                if dataset_service.is_excel_file(content, uf.filename):
+                    excel_sheets = dataset_service.get_sheet_names(content, uf.filename)
+                    for s in excel_sheets:
+                        try:
+                            sdf = dataset_service.read_excel_sheet(content, sheet_name=s)
+                            if sdf is not None and not sdf.empty and len(sdf.columns) > 0:
+                                sdf, _ = dataset_service.identify_and_convert_mixed_columns(sdf)
+                                s_name = s if len(excel_sheets) > 1 and s != "Sheet1" else file_base
+                                unique_s_name = dataset_service.sanitize_sheet_name(s_name, existing_sheet_names)
+                                existing_sheet_names.add(unique_s_name.lower())
+                                all_sheets[unique_s_name] = sdf
+                        except Exception as ex:
+                            logger.warning(f"Could not read sheet '{s}' from '{uf.filename}': {ex}")
+                else:
+                    try:
+                        cdf = dataset_service.read_csv_robust(content)
+                        if cdf is not None and not cdf.empty and len(cdf.columns) > 0:
+                            cdf, _ = dataset_service.identify_and_convert_mixed_columns(cdf)
+                            unique_s_name = dataset_service.sanitize_sheet_name(file_base, existing_sheet_names)
+                            existing_sheet_names.add(unique_s_name.lower())
+                            all_sheets[unique_s_name] = cdf
+                    except Exception as ex:
+                        logger.warning(f"Could not read CSV '{uf.filename}': {ex}")
+
+            if not all_sheets:
+                raise HTTPException(status_code=400, detail="None of the uploaded files contained valid tabular data.")
+
+            sheet_names = list(all_sheets.keys())
+            active_sheet = sheet_name if (sheet_name and sheet_name in sheet_names) else sheet_names[0]
+            df = all_sheets[active_sheet]
+            df, _ = dataset_service.identify_and_convert_mixed_columns(df)
+
+            col_meta, data_quality = dataset_service.profile_dataset(df)
+            df_processed, derived_features = dataset_service.generate_derived_features(df, col_meta)
+            col_meta_processed, _ = dataset_service.profile_dataset(df_processed)
+            col_meta_processed["_sheets"] = sheet_names
+            col_meta_processed["_active_sheet"] = active_sheet
+
+            workbook_bytes = dataset_service.create_multisheet_workbook_bytes(all_sheets)
+            clean_first = os.path.splitext(upload_list[0].filename)[0].replace("_", " ").title()
+            dataset_name = name or f"{clean_first} + {len(all_sheets) - 1} Sheets"
+            safe_prefix = re.sub(r'[^a-zA-Z0-9_-]', '_', dataset_name)
+
+            session_rec = None
+            if project_id:
+                session_rec = db.query(DatasetSession).filter(DatasetSession.id == project_id).first()
+
+            if session_rec:
+                if name:
+                    session_rec.name = name
+                session_rec.original_filename = ", ".join(all_filenames)
+                session_rec.file_size_bytes = total_bytes
+                session_rec.row_count = len(df_processed)
+                session_rec.column_count = len(df_processed.columns)
+                session_rec.column_metadata = col_meta_processed
+                session_rec.data_quality = data_quality
+                session_rec.derived_features = derived_features
+                db.query(SavedVisualization).filter(SavedVisualization.dataset_id == session_rec.id).delete()
+            else:
+                session_rec = DatasetSession(
+                    name=dataset_name,
+                    original_filename=", ".join(all_filenames),
+                    file_path="",
+                    file_size_bytes=total_bytes,
+                    row_count=len(df_processed),
+                    column_count=len(df_processed.columns),
+                    column_metadata=col_meta_processed,
+                    data_quality=data_quality,
+                    derived_features=derived_features
+                )
+                db.add(session_rec)
+                db.flush()
+
+            raw_path, proc_path = dataset_service.save_multisheet_dataset_files(
+                session_rec.id, workbook_bytes, df_processed, safe_prefix
+            )
+            session_rec.file_path = raw_path
+            session_rec.processed_file_path = proc_path
+
+            db.commit()
+            db.refresh(session_rec)
+
+            try:
+                project_service.get_or_create_project_sqlite_db(session_rec, force_refresh=True)
+            except Exception as build_err:
+                logger.warning(f"Could not pre-build project SQLite DB at multi-file upload: {build_err}")
+
+            return session_rec.to_dict()
+
+        # ── Case B: Single File ──
+        single_file = upload_list[0]
+        content = await single_file.read()
         if len(content) == 0:
             raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-        dataset_name = name or os.path.splitext(file.filename)[0].replace("_", " ").title()
-        
-        # 1. Multi-sheet Excel & CSV detection
-        is_excel = dataset_service.is_excel_file(content, file.filename)
-        sheet_names = dataset_service.get_sheet_names(content, file.filename) if is_excel else []
+        dataset_name = name or os.path.splitext(single_file.filename)[0].replace("_", " ").title()
+
+        # Multi-sheet Excel & CSV detection
+        is_excel = dataset_service.is_excel_file(content, single_file.filename)
+        sheet_names = dataset_service.get_sheet_names(content, single_file.filename) if is_excel else []
         active_sheet = sheet_name if (sheet_name and sheet_name in sheet_names) else (sheet_names[0] if sheet_names else None)
 
-        df = dataset_service.read_file_robust(content, file.filename, sheet_name=active_sheet)
+        df = dataset_service.read_file_robust(content, single_file.filename, sheet_name=active_sheet)
         if df.empty or len(df.columns) == 0:
             raise HTTPException(status_code=400, detail="File contains no valid columns or rows.")
 
-        # 2. Profile dataset
+        df, _ = dataset_service.identify_and_convert_mixed_columns(df)
         col_meta, data_quality = dataset_service.profile_dataset(df)
-
-        # 3. Generate useful derived categorical features (e.g. date extraction, groupings)
         df_processed, derived_features = dataset_service.generate_derived_features(df, col_meta)
 
-        # Update profile for derived columns
         col_meta_processed, _ = dataset_service.profile_dataset(df_processed)
         if sheet_names:
             col_meta_processed["_sheets"] = sheet_names
             col_meta_processed["_active_sheet"] = active_sheet
 
-        # 4. Check if attaching to existing Project / Session
         session_rec = None
         if project_id:
             session_rec = db.query(DatasetSession).filter(DatasetSession.id == project_id).first()
@@ -100,20 +218,19 @@ async def upload_dataset(
         if session_rec:
             if name:
                 session_rec.name = name
-            session_rec.original_filename = file.filename
+            session_rec.original_filename = single_file.filename
             session_rec.file_size_bytes = len(content)
             session_rec.row_count = len(df_processed)
             session_rec.column_count = len(df_processed.columns)
             session_rec.column_metadata = col_meta_processed
             session_rec.data_quality = data_quality
             session_rec.derived_features = derived_features
-            # Clear old visualizations if re-uploading
             db.query(SavedVisualization).filter(SavedVisualization.dataset_id == session_rec.id).delete()
         else:
             session_rec = DatasetSession(
                 name=dataset_name,
-                original_filename=file.filename,
-                file_path="", # placeholder
+                original_filename=single_file.filename,
+                file_path="",
                 file_size_bytes=len(content),
                 row_count=len(df_processed),
                 column_count=len(df_processed.columns),
@@ -124,9 +241,8 @@ async def upload_dataset(
             db.add(session_rec)
             db.flush()
 
-        # 5. Persist raw and processed CSVs
         raw_path, proc_path = dataset_service.save_dataset_files(
-            session_rec.id, content, df_processed, file.filename
+            session_rec.id, content, df_processed, single_file.filename
         )
         session_rec.file_path = raw_path
         session_rec.processed_file_path = proc_path
@@ -134,9 +250,8 @@ async def upload_dataset(
         db.commit()
         db.refresh(session_rec)
 
-        # Pre-build persistent SQLite DB for fast subsequent analytical queries
         try:
-            project_service.get_or_create_project_sqlite_db(session_rec)
+            project_service.get_or_create_project_sqlite_db(session_rec, force_refresh=True)
         except Exception as build_err:
             logger.warning(f"Could not pre-build project SQLite DB at upload: {build_err}")
 
@@ -177,12 +292,34 @@ def get_dataset_preview(id: str, limit: int = 100, db: Session = Depends(get_db)
             "rows": [],
             "total_rows": 0,
             "total_columns": 0,
-            "column_types": {}
+            "column_types": {},
+            "sql_types": {},
+            "mixed_columns": []
         }
 
     preview = dataset_service.get_preview_data(file_to_read, limit=limit)
     preview["total_rows"] = dataset.row_count
+
+    # Enrich with stored column metadata if available
+    col_meta = dataset.column_metadata or {}
+    if "sql_types" not in preview:
+        preview["sql_types"] = {}
+    for col, m in col_meta.items():
+        if isinstance(m, dict) and not str(col).startswith("_"):
+            if m.get("data_type"):
+                preview["column_types"][col] = m["data_type"]
+            if m.get("sql_type"):
+                preview["sql_types"][col] = m["sql_type"]
+    preview["mixed_columns"] = (dataset.data_quality or {}).get("converted_mixed_columns", preview.get("mixed_columns", []))
     return preview
+
+@router.get("/datasets/{id}/schema")
+def get_dataset_schema_endpoint(id: str, db: Session = Depends(get_db)):
+    """Returns dataset column metadata and SQL data types."""
+    try:
+        return project_service.get_project_schema(id, db)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.delete("/datasets/{id}")
 def delete_dataset(id: str, db: Session = Depends(get_db)):
@@ -222,6 +359,49 @@ def export_dataset(id: str, db: Session = Depends(get_db)):
         filename=f"processed_{dataset.original_filename}"
     )
 
+@router.get("/datasets/{id}/column-unique-values/{column}")
+def get_column_unique_values(id: str, column: str, db: Session = Depends(get_db)):
+    """Returns all distinct non-null values for a given column from the full dataset SQLite database."""
+    dataset = db.query(DatasetSession).filter(DatasetSession.id == id).first()
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    try:
+        result = project_service.query_project_data(
+            id,
+            f'SELECT DISTINCT "{column}" FROM dataset WHERE "{column}" IS NOT NULL AND "{column}" != "" ORDER BY "{column}"',
+            db,
+            limit=999999
+        )
+        values = [str(row[column]) for row in result.get("rows", []) if row.get(column) is not None]
+        return {"column": column, "values": values, "count": len(values)}
+    except Exception as e:
+        logger.warning(f"column-unique-values fallback for column '{column}': {e}")
+        # Fallback: read from CSV directly
+        try:
+            file_path = dataset.processed_file_path or dataset.file_path
+            df = pd.read_csv(file_path, usecols=[column], dtype=str, low_memory=False)
+            vals = sorted(df[column].dropna().unique().tolist())
+            return {"column": column, "values": vals, "count": len(vals)}
+        except Exception as e2:
+            raise HTTPException(status_code=500, detail=f"Could not retrieve unique values: {e2}")
+
+@router.post("/datasets/{id}/fix-formatting")
+def fix_dataset_formatting(id: str, db: Session = Depends(get_db)):
+    """
+    Scans all text/string columns for invisible control characters (tabs, CR, LF, NUL, etc.)
+    and removes ONLY those characters. Normal spaces and all printable content are preserved.
+    Returns a summary of how many cells were cleaned and which columns were affected.
+    """
+    try:
+        result = project_service.fix_formatting_data(project_id=id, db=db)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error fixing formatting for dataset {id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fix formatting: {str(e)}")
+
+
 @router.get("/datasets/{id}/sheets")
 def get_dataset_sheets(id: str, db: Session = Depends(get_db)):
     """Returns available sheet names for a multi-sheet dataset."""
@@ -253,6 +433,7 @@ def switch_dataset_sheet(id: str, req: SwitchSheetRequest, db: Session = Depends
     if df.empty or len(df.columns) == 0:
         raise HTTPException(status_code=400, detail=f"Sheet '{req.sheet_name}' is empty")
 
+    df, _ = dataset_service.identify_and_convert_mixed_columns(df)
     col_meta, data_quality = dataset_service.profile_dataset(df)
     df_processed, derived_features = dataset_service.generate_derived_features(df, col_meta)
     col_meta_proc, _ = dataset_service.profile_dataset(df_processed)
@@ -288,7 +469,20 @@ def switch_dataset_sheet(id: str, req: SwitchSheetRequest, db: Session = Depends
 
 @router.get("/visualizations")
 def list_visualizations(dataset_id: str, category: Optional[str] = None, db: Session = Depends(get_db)):
-    """Lists saved and recommended visualizations for a dataset."""
+    """Lists saved and recommended visualizations for a dataset, syncing any dashboard cards for this dataset."""
+    try:
+        dashboards = db.query(SavedDashboard).filter(SavedDashboard.project_id == dataset_id).all()
+        synced_any = False
+        for dash in dashboards:
+            if dash.tabs:
+                if dashboard_service.sync_dashboard_cards_to_visualizations(db, dataset_id, dash.tabs, dash.title, dash.id):
+                    flag_modified(dash, "tabs")
+                    synced_any = True
+        if synced_any:
+            db.commit()
+    except Exception as e:
+        logger.warning(f"Error syncing dashboard cards on list_visualizations: {e}")
+
     q = db.query(SavedVisualization).filter(SavedVisualization.dataset_id == dataset_id)
     if category:
         q = q.filter(SavedVisualization.category == category)
@@ -773,6 +967,14 @@ def query_project_data_endpoint(id: str, req: ProjectQueryRequest, db: Session =
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.get("/projects/{id}/schema")
+def get_project_schema_endpoint(id: str, db: Session = Depends(get_db)):
+    """Returns project SQLite tables and column types."""
+    try:
+        return project_service.get_project_schema(id, db)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @router.post("/projects/{id}/chat")
 async def project_data_chat_endpoint(id: str, req: ProjectChatRequest, db: Session = Depends(get_db)):
     """Project-specific AI data chat for transformations, formula advice, and analysis."""
@@ -832,15 +1034,41 @@ def delete_experiment(id: str, db: Session = Depends(get_db)):
 async def train_chart_forecast(req: ChartForecastTrainRequest, db: Session = Depends(get_db)):
     """
     Chart-Based Forecasting Workflow:
-    1. Loads the chart and its underlying dataset
+    1. Loads the chart (from SavedVisualization or auto-resolves from SavedDashboard cards)
     2. Auto-detects date/time column and target metric
     3. LLM selects the best forecasting approach
     4. Trains the model with sliding-window/lag features
     5. Generates forecast and Actual vs Predicted visualization
     6. Saves model with chart binding
     """
-    # Validate chart exists
+    # 1. Validate chart exists (supports direct visualization ID and dashboard card ID)
     chart = db.query(SavedVisualization).filter(SavedVisualization.id == req.chart_id).first()
+    if not chart:
+        # Search dashboard cards across all dashboards
+        dashboards = db.query(SavedDashboard).all()
+        for dash in dashboards:
+            for tab in (dash.tabs or []):
+                for card in tab.get("layout", []):
+                    if card.get("id") == req.chart_id or card.get("visualization_id") == req.chart_id:
+                        vis_id = card.get("visualization_id")
+                        if vis_id:
+                            chart = db.query(SavedVisualization).filter(SavedVisualization.id == vis_id).first()
+                        if not chart:
+                            # Sync the dashboard cards
+                            project_id = dash.project_id or req.dataset_id
+                            dashboard_service.sync_dashboard_cards_to_visualizations(db, project_id, dash.tabs, dash.title, dash.id)
+                            flag_modified(dash, "tabs")
+                            db.commit()
+                            vis_id = card.get("visualization_id")
+                            if vis_id:
+                                chart = db.query(SavedVisualization).filter(SavedVisualization.id == vis_id).first()
+                        if chart:
+                            break
+                if chart:
+                    break
+            if chart:
+                break
+
     if not chart:
         raise HTTPException(status_code=404, detail="Chart/visualization not found")
 
@@ -848,19 +1076,51 @@ async def train_chart_forecast(req: ChartForecastTrainRequest, db: Session = Dep
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
-    file_to_read = dataset.processed_file_path or dataset.file_path
-    if not file_to_read or not os.path.exists(file_to_read):
-        raise HTTPException(status_code=404, detail="Dataset file missing")
+    # 2. Load chart data: execute SQL query if chart is query-backed, otherwise read dataset file
+    df = None
+    chart_cfg = chart.configuration or {}
+    chart_sql = chart_cfg.get("sql") or chart_cfg.get("sql_query")
+    if not chart_sql and chart.filters:
+        for f in chart.filters:
+            if isinstance(f, dict) and f.get("sql_query"):
+                chart_sql = f["sql_query"]
+                break
 
-    try:
-        if file_to_read.endswith(('.xlsx', '.xls')):
-            df = pd.read_excel(file_to_read)
-        else:
-            df = pd.read_csv(file_to_read, encoding='utf-8', on_bad_lines='skip')
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to read dataset: {str(e)}")
+    if chart_sql:
+        try:
+            res = project_service.query_project_data(dataset.id, chart_sql, db, limit=5000)
+            if res.get("rows"):
+                df = pd.DataFrame(res["rows"], columns=res["columns"])
+                logger.info(f"Loaded {len(df)} rows for forecasting using chart SQL query: {chart_sql[:80]}...")
+        except Exception as q_err:
+            logger.warning(f"Failed to query chart SQL for forecasting ({q_err}), falling back to dataset file")
 
-    # 1. Detect time-series columns from chart
+    if df is None or len(df) == 0:
+        file_to_read = dataset.processed_file_path or dataset.file_path
+        if not file_to_read or not os.path.exists(file_to_read):
+            raise HTTPException(status_code=404, detail="Dataset file missing")
+
+        try:
+            if file_to_read.endswith(('.xlsx', '.xls')):
+                try:
+                    df = pd.read_excel(file_to_read, engine='openpyxl')
+                except Exception:
+                    df = pd.read_excel(file_to_read)
+            else:
+                df = pd.read_csv(file_to_read, encoding='utf-8', on_bad_lines='skip')
+        except Exception as e:
+            if dataset.file_path and os.path.exists(dataset.file_path) and dataset.file_path != file_to_read:
+                try:
+                    if dataset.file_path.endswith(('.xlsx', '.xls')):
+                        df = pd.read_excel(dataset.file_path, engine='openpyxl')
+                    else:
+                        df = pd.read_csv(dataset.file_path, encoding='utf-8', on_bad_lines='skip')
+                except Exception as e2:
+                    raise HTTPException(status_code=400, detail=f"Failed to read dataset: {str(e2)}")
+            else:
+                raise HTTPException(status_code=400, detail=f"Failed to read dataset: {str(e)}")
+
+    # 3. Detect time-series columns from chart
     chart_meta = chart.to_dict()
     col_meta = dataset.column_metadata or {}
     detection = forecasting_service.detect_chart_time_series(df, chart_meta, col_meta)
@@ -875,20 +1135,23 @@ async def train_chart_forecast(req: ChartForecastTrainRequest, db: Session = Dep
     target_column = detection["target_column"]
     forecast_horizon = req.forecast_horizon or 12
 
-    # 2. Compute data summary for LLM
-    target_series = pd.to_numeric(df[target_column], errors='coerce').dropna()
+    # 4. Compute data summary for LLM
+    target_series = pd.to_numeric(
+        df[target_column].astype(str).str.replace(r'[\$,₹,]', '', regex=True),
+        errors='coerce'
+    ).dropna()
     data_summary = {
-        "target_mean": round(float(target_series.mean()), 2),
-        "target_std": round(float(target_series.std()), 2),
-        "target_min": round(float(target_series.min()), 2),
-        "target_max": round(float(target_series.max()), 2),
+        "target_mean": round(float(target_series.mean()), 2) if not target_series.empty else 0.0,
+        "target_std": round(float(target_series.std()), 2) if not target_series.empty else 0.0,
+        "target_min": round(float(target_series.min()), 2) if not target_series.empty else 0.0,
+        "target_max": round(float(target_series.max()), 2) if not target_series.empty else 0.0,
         "row_count": len(df),
-        "date_range": f"{df[date_column].min()} to {df[date_column].max()}",
+        "date_range": f"{df[date_column].iloc[0] if len(df) else ''} to {df[date_column].iloc[-1] if len(df) else ''}",
         "chart_type": chart.chart_type,
         "aggregation": chart.aggregation
     }
 
-    # 3. LLM selects forecasting approach
+    # 5. LLM selects forecasting approach
     approach = await forecasting_service.select_forecasting_approach(
         dataset_name=dataset.name,
         date_column=date_column,
@@ -903,12 +1166,12 @@ async def train_chart_forecast(req: ChartForecastTrainRequest, db: Session = Dep
     technique_name = approach.get("technique_name", technique_id)
     hyper = approach.get("hyperparameters", {})
 
-    # 4. Create experiment record
+    # 6. Create experiment record linked to both chart and visualization
     model_name = req.model_name or f"{chart.title} - {technique_name} Forecast"
     experiment = MLExperiment(
         dataset_id=req.dataset_id,
-        visualization_id=req.chart_id,
-        source_visualization_ids=[req.chart_id],
+        visualization_id=chart.id,
+        source_visualization_ids=[chart.id, req.chart_id] if req.chart_id != chart.id else [chart.id],
         workflow_type="chart_forecast",
         chart_id=req.chart_id,
         model_name=model_name,
@@ -927,7 +1190,7 @@ async def train_chart_forecast(req: ChartForecastTrainRequest, db: Session = Dep
     db.refresh(experiment)
 
     try:
-        # 5. Train forecasting model
+        # 7. Train forecasting model
         results = forecasting_service.train_forecast_model(
             experiment_id=experiment.id,
             df=df,
@@ -938,14 +1201,14 @@ async def train_chart_forecast(req: ChartForecastTrainRequest, db: Session = Dep
             forecast_horizon=forecast_horizon
         )
 
-        # 6. Deactivate previous active models for this chart
+        # 8. Deactivate previous active models for this chart
         db.query(MLExperiment).filter(
-            MLExperiment.chart_id == req.chart_id,
+            (MLExperiment.chart_id == req.chart_id) | (MLExperiment.visualization_id == chart.id) | (MLExperiment.chart_id == chart.id),
             MLExperiment.is_active_for_chart == True,
             MLExperiment.id != experiment.id
         ).update({"is_active_for_chart": False})
 
-        # 7. Update experiment record
+        # 9. Update experiment record
         experiment.status = "completed"
         experiment.metrics = results["metrics"]
         experiment.forecast_data = results["forecast_data"]
@@ -976,11 +1239,10 @@ async def train_chart_forecast(req: ChartForecastTrainRequest, db: Session = Dep
 def get_chart_forecast_history(chart_id: str, db: Session = Depends(get_db)):
     """
     Returns the model history for a specific chart.
-    Includes all forecasting models trained against this chart,
-    sorted by creation date with active model flagged.
+    Supports either chart card ID or visualization ID.
     """
     experiments = db.query(MLExperiment).filter(
-        MLExperiment.chart_id == chart_id,
+        (MLExperiment.chart_id == chart_id) | (MLExperiment.visualization_id == chart_id),
         MLExperiment.workflow_type == "chart_forecast"
     ).order_by(MLExperiment.created_at.desc()).all()
 
@@ -1003,14 +1265,14 @@ def activate_chart_forecast_model(req: ChartModelActivateRequest, db: Session = 
     """
     experiment = db.query(MLExperiment).filter(
         MLExperiment.id == req.experiment_id,
-        MLExperiment.chart_id == req.chart_id
+        (MLExperiment.chart_id == req.chart_id) | (MLExperiment.visualization_id == req.chart_id)
     ).first()
     if not experiment:
         raise HTTPException(status_code=404, detail="Forecast model not found for this chart")
 
-    # Deactivate all others
+    # Deactivate all others for this chart / visualization
     db.query(MLExperiment).filter(
-        MLExperiment.chart_id == req.chart_id,
+        (MLExperiment.chart_id == req.chart_id) | (MLExperiment.visualization_id == experiment.visualization_id) | (MLExperiment.chart_id == experiment.chart_id),
         MLExperiment.is_active_for_chart == True
     ).update({"is_active_for_chart": False})
 
@@ -1031,7 +1293,7 @@ def get_active_chart_forecast(chart_id: str, db: Session = Depends(get_db)):
     Returns the currently active forecast model for a chart, if any.
     """
     experiment = db.query(MLExperiment).filter(
-        MLExperiment.chart_id == chart_id,
+        (MLExperiment.chart_id == chart_id) | (MLExperiment.visualization_id == chart_id),
         MLExperiment.is_active_for_chart == True,
         MLExperiment.workflow_type == "chart_forecast",
         MLExperiment.status == "completed"

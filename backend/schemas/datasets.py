@@ -34,6 +34,8 @@ class DatasetPreviewResponse(BaseModel):
     total_rows: int
     total_columns: int
     column_types: Dict[str, str]
+    sql_types: Optional[Dict[str, str]] = {}
+    mixed_columns: Optional[List[str]] = []
 
 class ProjectCreateRequest(BaseModel):
     name: str = Field(..., description="Name of the project session")
