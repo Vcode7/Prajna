@@ -1,7 +1,24 @@
 import os
-from typing import Optional
+import json
+from typing import Optional, Union, Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, field_validator
+
+DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5175",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:8001",
+    "http://127.0.0.1:8001",
+    "*"
+]
 
 class Settings(BaseSettings):
     # API Configurations (Primary + 4 Fallback Keys)
@@ -39,6 +56,13 @@ class Settings(BaseSettings):
     ollama_model: str = Field(default="qwen3:4b-instruct", validation_alias="OLLAMA_MODEL")
     ollama_timeout: Optional[float] = Field(default=None, validation_alias="OLLAMA_TIMEOUT")
     groq_timeout: float = Field(default=60.0, validation_alias="GROQ_TIMEOUT")
+
+    @field_validator("ollama_timeout", mode="before")
+    @classmethod
+    def parse_ollama_timeout(cls, v: Any) -> Optional[float]:
+        if v is None or v == "" or (isinstance(v, str) and not v.strip()):
+            return None
+        return float(v)
     
     # Database Configurations
     database_url: str = Field(
@@ -66,28 +90,35 @@ class Settings(BaseSettings):
     chart_generation_max_tokens: int = Field(default=300, validation_alias="CHART_GENERATION_MAX_TOKENS")
     chat_max_tokens: int = Field(default=1500, validation_alias="CHAT_MAX_TOKENS")
     
-    # CORS
-    allowed_origins_raw: str = Field(default="", validation_alias="ALLOWED_ORIGINS")
-    allowed_origins: list[str] = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        "http://localhost:5175",
-        "http://127.0.0.1:5175",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-        "http://localhost:8001",
-        "http://127.0.0.1:8001",
-        "*"
-    ]
+    # CORS Configuration
+    allowed_origins: Union[list[str], str] = Field(
+        default=DEFAULT_ALLOWED_ORIGINS,
+        validation_alias="ALLOWED_ORIGINS"
+    )
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return DEFAULT_ALLOWED_ORIGINS
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [x.strip() for x in v.split(",") if x.strip()]
+        elif isinstance(v, list):
+            return v
+        return DEFAULT_ALLOWED_ORIGINS
 
     def get_allowed_origins(self) -> list[str]:
-        if self.allowed_origins_raw and self.allowed_origins_raw.strip():
-            return [o.strip() for o in self.allowed_origins_raw.split(",") if o.strip()]
-        return self.allowed_origins
+        if isinstance(self.allowed_origins, list):
+            return self.allowed_origins
+        elif isinstance(self.allowed_origins, str) and self.allowed_origins.strip():
+            return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+        return DEFAULT_ALLOWED_ORIGINS
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(__file__), ".env"),

@@ -17,8 +17,10 @@ async def test_ollama_detailed_error_diagnostics_logging(caplog):
     mock_failed_resp.status_code = 500
     mock_failed_resp.text = "Internal Server Error in Ollama engine"
 
-    with patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as mock_post:
+    with patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as mock_post, \
+         patch.object(groq_client, "_get_available_ollama_model", new_callable=AsyncMock) as mock_model:
         mock_post.return_value = mock_failed_resp
+        mock_model.return_value = settings.ollama_model
 
         with pytest.raises(Exception) as exc_info:
             await groq_client._call_ollama(messages)
