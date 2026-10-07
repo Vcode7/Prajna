@@ -59,8 +59,16 @@ class GroqClient:
 
                 clean_models = [n for n in installed_names if not is_ocr_or_vlm(n)]
 
-                # Priority 1: Any Qwen text model
-                qwen_models = [n for n in clean_models if "qwen" in n.lower()]
+                # Check if the user's explicitly requested model is installed
+                if requested_model:
+                    req_lower = requested_model.lower()
+                    exact_match = [n for n in clean_models if n.lower() == req_lower or n.lower().startswith(f"{req_lower}:")]
+                    if exact_match:
+                        logger.info(f"Using explicitly configured Ollama model: '{exact_match[0]}'")
+                        return exact_match[0]
+
+                # Priority 1: Any Qwen / Wen text model (e.g. qwen2.5:7b, qwen2.5:14b, qwen3)
+                qwen_models = [n for n in clean_models if "qwen" in n.lower() or "wen" in n.lower()]
                 if qwen_models:
                     if requested_model and requested_model in qwen_models:
                         return requested_model

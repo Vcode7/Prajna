@@ -277,6 +277,34 @@ npm run dev
      npm run dev -- --port 3000
      ```
 
+### Running Silently in Background on Windows (No Open Terminals)
+
+If you want both the backend and frontend running continuously without keeping any PowerShell or Command Prompt terminal windows open:
+
+#### Option 1: 1-Click Silent Execution (Recommended)
+Double-click `start_silent.vbs` in Windows Explorer (or run via PowerShell):
+```powershell
+.\start_background.ps1
+```
+This detaches both processes into the background with `-WindowStyle Hidden`. You can safely close your terminal; the services will keep running indefinitely in the background.
+
+To stop the background services:
+```powershell
+.\stop_background.ps1
+```
+*(Or double-click `stop_silent.vbs`)*
+
+#### Option 2: Direct PowerShell One-Liner
+From the project root:
+```powershell
+# Start backend in hidden detached process:
+Start-Process -WindowStyle Hidden python -ArgumentList "-m uvicorn backend.main:app --host 0.0.0.0 --port 8000" -WorkingDirectory (Get-Location)
+
+# Start frontend in hidden detached process:
+Start-Process -WindowStyle Hidden cmd.exe -ArgumentList "/c npm run dev" -WorkingDirectory "$((Get-Location))\frontend"
+```
+Once executed, you can close the terminal completely. Check status via browser at `http://localhost:5173`.
+
 ---
 
 ## Linux Production Deployment Guide
