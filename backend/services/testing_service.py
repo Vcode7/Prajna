@@ -11,6 +11,7 @@ from sklearn.metrics import (
 )
 from backend.llm.client import groq_client
 from backend.config import settings
+from backend.models.models import sanitize_for_json
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,7 @@ class TestingService:
         # 6. Generate Prediction Visualizations
         pred_charts = self._build_prediction_charts(problem_type, y_pred_decoded, probabilities, bundle.get("classes"))
 
-        return {
+        return sanitize_for_json({
             "problem_type": problem_type,
             "target_column": target_column,
             "has_ground_truth": has_ground_truth,
@@ -145,7 +146,7 @@ class TestingService:
             "rows": prediction_rows[:500], # Cap for frontend view
             "columns": list(test_df.columns) + ["__ml_prediction"] + (["__ml_confidence"] if probabilities else []),
             "charts": pred_charts
-        }
+        })
 
     def _build_prediction_charts(
         self,

@@ -477,21 +477,23 @@ Make it look like a premium, highly professional BI executive report.
 
     async def repair_sql_loop(
         self,
-        title: str,
-        failing_sql: str,
-        error_message: str,
-        schema_context: str,
+        title: str = "Query",
+        failing_sql: str = "",
+        error_message: str = "",
+        schema_context: str = "",
         max_retries: int = 3,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        user_question: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Recursively repairs failing SQL queries.
         """
+        target_title = user_question or title or "Query"
         current_sql = failing_sql
         current_error = error_message
         
         for attempt in range(1, max_retries + 1):
-            logger.info(f"Auto Repair Attempt {attempt}/{max_retries} for widget '{title}': {current_sql}")
+            logger.info(f"Auto Repair Attempt {attempt}/{max_retries} for widget '{target_title}': {current_sql}")
             
             prompt = get_sql_repair_prompt(schema_context, current_sql, current_error)
             messages = [

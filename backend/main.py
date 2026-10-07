@@ -34,16 +34,31 @@ logging.basicConfig(
 
 logger = logging.getLogger("backend.main")
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Initializing application databases...")
+    try:
+        init_history_db()
+        init_app_db()
+        logger.info("Application and query history databases initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize databases: {e}")
+    yield
+    logger.info("Application shutdown complete.")
+
 app = FastAPI(
     title="PRAJNA — Predictive Research & Analytics for Judgement, Navigation & Action",
     description="Predictive Research & Analytics for Judgement, Navigation & Action. CSV Data Analysis, Visualization, ML Training, Testing, and Deployment Platform.",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # Set CORS middleware with allowed_origins and regex matching any localhost/127.0.0.1 port
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins,
+    allow_origins=settings.get_allowed_origins(),
     allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
     allow_credentials=True,
     allow_methods=["*"],
@@ -55,25 +70,15 @@ app.add_middleware(
 app.include_router(router_v2, prefix="/api")
 app.include_router(router, prefix="/api")
 
-@app.on_event("startup")
-def on_startup():
-    logger.info("Initializing application...")
-    try:
-        init_history_db()
-        init_app_db()
-        logger.info("Application and query history databases initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize databases: {e}")
-
 @app.get("/")
 def read_root():
     return {
         "status": "online",
-        "app": "AntiBI - AI Data Analysis & ML Platform API",
+        "app": "PRAJNA - AI Data Analysis & ML Platform API",
         "version": "2.0.0"
     }
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", os.environ.get("BACKEND_PORT", 8000)))
     uvicorn.run("backend.main:app", host="0.0.0.0", port=port, reload=True)
 

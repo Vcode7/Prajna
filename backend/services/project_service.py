@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
-from backend.models.models import DatasetSession, SavedVisualization, MLExperiment, DeployedModel
+from backend.models.models import DatasetSession, SavedVisualization, MLExperiment, DeployedModel, sanitize_for_json
 from backend.services.dataset_service import dataset_service
 from backend.llm.client import groq_client
 from backend.config import settings
@@ -53,8 +53,8 @@ class ProjectService:
                     "algorithm": m.algorithm,
                     "problem_type": m.problem_type,
                     "target_column": m.target_column,
-                    "accuracy": m.metrics.get("accuracy") if m.metrics else None,
-                    "r2_score": m.metrics.get("r2_score") if m.metrics else None,
+                    "accuracy": sanitize_for_json(m.metrics.get("accuracy")) if m.metrics else None,
+                    "r2_score": sanitize_for_json(m.metrics.get("r2_score")) if m.metrics else None,
                     "status": m.status,
                     "is_deployed": m.deployment is not None,
                     "deployment_id": m.deployment.id if m.deployment else None

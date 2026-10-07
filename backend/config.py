@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = Field(default="http://localhost:11434", validation_alias="OLLAMA_BASE_URL")
     ollama_model: str = Field(default="qwen3:4b-instruct", validation_alias="OLLAMA_MODEL")
     ollama_timeout: Optional[float] = Field(default=None, validation_alias="OLLAMA_TIMEOUT")
+    groq_timeout: float = Field(default=60.0, validation_alias="GROQ_TIMEOUT")
     
     # Database Configurations
     database_url: str = Field(
@@ -66,6 +67,7 @@ class Settings(BaseSettings):
     chat_max_tokens: int = Field(default=1500, validation_alias="CHAT_MAX_TOKENS")
     
     # CORS
+    allowed_origins_raw: str = Field(default="", validation_alias="ALLOWED_ORIGINS")
     allowed_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -81,6 +83,11 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8001",
         "*"
     ]
+
+    def get_allowed_origins(self) -> list[str]:
+        if self.allowed_origins_raw and self.allowed_origins_raw.strip():
+            return [o.strip() for o in self.allowed_origins_raw.split(",") if o.strip()]
+        return self.allowed_origins
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(__file__), ".env"),

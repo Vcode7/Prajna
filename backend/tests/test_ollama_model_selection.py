@@ -59,3 +59,17 @@ async def test_ollama_model_selection_priority():
         await groq_client._get_available_ollama_model(mock_client, base_url)
     assert "No suitable local LLM found" in str(exc_info.value)
     assert "Will not fall back to OCR or VLM models" in str(exc_info.value)
+
+    # Test 4: Neither Qwen nor Gemma, but another text model (e.g. llama3.2:3b) is installed -> Must pick it
+    res_other = MagicMock()
+    res_other.status_code = 200
+    res_other.json.return_value = {
+        "models": [
+            {"name": "ahmgam/chandra-ocr-2:q4"},
+            {"name": "llama3.2:3b"}
+        ]
+    }
+    mock_client.get = AsyncMock(return_value=res_other)
+
+    selected = await groq_client._get_available_ollama_model(mock_client, base_url)
+    assert selected == "llama3.2:3b"

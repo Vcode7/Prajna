@@ -77,11 +77,19 @@ class GroqClient:
                     logger.info(f"Auto-detected installed local Ollama Gemma model: '{selected}' (Qwen not installed, falling back to Gemma)")
                     return selected
 
-                # Priority 3: Neither Qwen nor Gemma found -> Raise Error
+                # Priority 3: Other available Ollama text model
+                if clean_models:
+                    if requested_model and requested_model in clean_models:
+                        return requested_model
+                    selected = clean_models[0]
+                    logger.info(f"Auto-detected other available local Ollama model: '{selected}' (neither Qwen nor Gemma installed, falling back to other model)")
+                    return selected
+
+                # Priority 4: Neither Qwen, Gemma, nor other clean text model found (only OCR/vision models)
                 err_msg = (
                     f"No suitable local LLM found in Ollama at {base_url}. "
-                    f"Expected a Qwen text model or Gemma model, but installed models are: {installed_names}. "
-                    f"Will not fall back to OCR or VLM models. Please run: 'ollama pull qwen2.5:7b' or 'ollama pull gemma2:9b'."
+                    f"Expected a Qwen, Gemma, or general text model, but installed models are: {installed_names}. "
+                    f"Will not fall back to OCR or VLM models. Please run: 'ollama pull qwen2.5:7b', 'ollama pull gemma2:9b', or 'ollama pull llama3.2'."
                 )
                 logger.error(err_msg)
                 raise RuntimeError(err_msg)
@@ -316,7 +324,7 @@ class GroqClient:
                         task_name=task_name
                     )
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=settings.groq_timeout) as client:
                 for attempt in range(total_keys):
                     key_index = (start_index + attempt) % total_keys
                     current_key = all_keys[key_index]

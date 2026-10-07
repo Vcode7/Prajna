@@ -23,7 +23,7 @@ class InferenceRequest(BaseModel):
 
 class InferenceInsightsRequest(BaseModel):
     deployment_id: Optional[str] = None
-    model_name: str
-    input_summary: Dict[str, Any]
-    predictions_summary: Dict[str, Any]
+    model_name: Optional[str] = None
+    input_summary: Optional[Dict[str, Any]] = None
+    predictions_summary: Dict[str, Any] = Field(default_factory=dict)
     model: Optional[str] = None

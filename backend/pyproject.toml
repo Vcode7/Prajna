@@ -1,0 +1,47 @@
+[project]
+name = "prajna-backend"
+version = "2.0.0"
+description = "PRAJNA — Predictive Research & Analytics for Judgement, Navigation & Action Backend"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.1",
+    "sqlalchemy>=2.0.31",
+    "pydantic>=2.7.4",
+    "pydantic-settings>=2.3.4",
+    "pandas>=2.2.2",
+    "numpy>=1.26.4",
+    "scikit-learn>=1.5.0",
+    "joblib>=1.4.2",
+    "openpyxl>=3.1.5",
+    "sqlparse>=0.5.0",
+    "python-dotenv>=1.0.1",
+    "httpx>=0.27.0",
+    "python-multipart>=0.0.9",
+    "requests>=2.32.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.2",
+    "pytest-asyncio>=0.23.0",
+]
+production = [
+    "gunicorn>=22.0.0; sys_platform != 'win32'",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "ignore::DeprecationWarning:starlette.*",
+    "ignore::PendingDeprecationWarning:multipart.*"
+]

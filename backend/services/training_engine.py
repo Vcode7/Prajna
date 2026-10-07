@@ -46,6 +46,23 @@ logger = logging.getLogger(__name__)
 MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "models")
 os.makedirs(MODELS_DIR, exist_ok=True)
 
+def sanitize_for_json(obj: Any) -> Any:
+    if isinstance(obj, bool):
+        return obj
+    elif isinstance(obj, (float, np.floating)):
+        if np.isnan(obj) or np.isinf(obj):
+            return None
+        return float(obj)
+    elif isinstance(obj, (int, np.integer)):
+        return int(obj)
+    elif isinstance(obj, np.ndarray):
+        return sanitize_for_json(obj.tolist())
+    elif isinstance(obj, dict):
+        return {str(k): sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple, set)):
+        return [sanitize_for_json(v) for v in obj]
+    return obj
+
 class TrainingEngine:
     def get_estimator_instance(self, algorithm: str, problem_type: str, hyperparameters: Dict[str, Any]):
         """
@@ -409,8 +426,8 @@ class TrainingEngine:
             "algorithm": algorithm,
             "hyperparameters": hyperparameters,
             "train_config": train_config,
-            "metrics": metrics,
-            "feature_importances": feature_importances,
+            "metrics": sanitize_for_json(metrics),
+            "feature_importances": sanitize_for_json(feature_importances),
             "model_artifact_path": model_artifact_path,
             "training_time_seconds": duration
         }

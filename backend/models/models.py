@@ -5,8 +5,28 @@ import json
 import uuid
 from backend.database.session import Base, engine
 
+import math
+import numpy as np
+
 def generate_uuid():
     return str(uuid.uuid4())
+
+def sanitize_for_json(obj):
+    if isinstance(obj, bool):
+        return obj
+    elif isinstance(obj, (float, np.floating)):
+        if np.isnan(obj) or np.isinf(obj):
+            return None
+        return float(obj)
+    elif isinstance(obj, (int, np.integer)):
+        return int(obj)
+    elif isinstance(obj, np.ndarray):
+        return sanitize_for_json(obj.tolist())
+    elif isinstance(obj, dict):
+        return {str(k): sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple, set)):
+        return [sanitize_for_json(v) for v in obj]
+    return obj
 
 class DatasetSession(Base):
     __tablename__ = "dataset_sessions"
@@ -166,8 +186,8 @@ class MLExperiment(Base):
             "algorithm": self.algorithm,
             "hyperparameters": self.hyperparameters or {},
             "train_config": self.train_config or {},
-            "metrics": self.metrics or {},
-            "feature_importances": self.feature_importances or [],
+            "metrics": sanitize_for_json(self.metrics or {}),
+            "feature_importances": sanitize_for_json(self.feature_importances or []),
             "model_artifact_path": self.model_artifact_path,
             "training_time_seconds": self.training_time_seconds,
             "status": self.status,

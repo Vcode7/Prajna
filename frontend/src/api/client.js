@@ -1,4 +1,14 @@
-const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+const getApiBase = () => {
+  if (import.meta.env.VITE_API_BASE) {
+    return import.meta.env.VITE_API_BASE.replace(/\/+$/, '');
+  }
+  if (import.meta.env.VITE_BACKEND_URL) {
+    return `${import.meta.env.VITE_BACKEND_URL.replace(/\/+$/, '')}/api`;
+  }
+  return '/api';
+};
+
+export const API_BASE = getApiBase();
 
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;

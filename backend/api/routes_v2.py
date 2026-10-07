@@ -1419,7 +1419,7 @@ def update_deployment(id: str, req: DeploymentUpdateRequest, db: Session = Depen
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
 
-    for key, val in req.dict(exclude_unset=True).items():
+    for key, val in req.model_dump(exclude_unset=True).items():
         if hasattr(dep, key) and val is not None:
             setattr(dep, key, val)
 

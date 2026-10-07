@@ -9,8 +9,8 @@ class GenerateSQLRequest(BaseModel):
 
 class ExecuteSQLRequest(BaseModel):
     sql: str = Field(..., description="The SQL query to execute")
-    prompt: str = Field(..., description="The original natural language query")
-    conversation_id: str = Field(..., description="UUID or ID of the chat session")
+    prompt: Optional[str] = Field(default="", description="The original natural language query")
+    conversation_id: Optional[str] = Field(default=None, description="UUID or ID of the chat session")
 
 class RepairSQLRequest(BaseModel):
     sql: str = Field(..., description="The failing SQL query")

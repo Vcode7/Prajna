@@ -92,7 +92,7 @@ async def generate_sql_endpoint(req: GenerateSQLRequest, db: Session = Depends(g
             chart_config=saved_chart_config,
             insights=result.get("insights"),
             database_name="enterprise_erp.db",
-            model_used=req.model or "openai/gpt-oss-120b"
+            model_used=req.model or settings.default_model
         )
         
         db.add(db_history)
@@ -162,7 +162,7 @@ async def generate_sql_stream_endpoint(req: GenerateSQLRequest, db: Session = De
                     chart_config=None,
                     insights=response_text,
                     database_name="enterprise_erp.db",
-                    model_used=req.model or "openai/gpt-oss-120b"
+                    model_used=req.model or settings.default_model
                 )
                 db.add(db_history)
                 db.commit()
@@ -269,7 +269,7 @@ async def generate_sql_stream_endpoint(req: GenerateSQLRequest, db: Session = De
                 chart_config=saved_chart_config,
                 insights=exec_summary,
                 database_name="enterprise_erp.db",
-                model_used=req.model or "openai/gpt-oss-120b"
+                model_used=req.model or settings.default_model
             )
             db.add(db_history)
             db.commit()
@@ -420,7 +420,7 @@ async def repair_sql_endpoint(req: RepairSQLRequest):
         
     try:
         result = await sql_generator_service.repair_sql_loop(
-            user_question="Repair Query",
+            title="Repair Query",
             failing_sql=req.sql,
             error_message=req.error,
             schema_context=schema_text
@@ -447,13 +447,14 @@ async def chart_endpoint(req: ChartRequest):
 async def insights_endpoint(req: InsightsRequest):
     """Triggers LLM insight analysis for custom outputs."""
     try:
-        return await insight_service.generate_insights(
+        insights = await insight_service.generate_insights(
             user_question=req.prompt,
             sql=req.sql,
             columns=req.columns,
             rows=req.rows,
             model=req.model
         )
+        return {"insights": insights}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
