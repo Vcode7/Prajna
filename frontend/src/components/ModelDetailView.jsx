@@ -269,9 +269,9 @@ export default function ModelDetailView() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {modelData.problem_type === 'classification' ? (
               <>
-                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-center">
+                <div className="p-4 rounded-2xl bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 text-center">
                   <span className="text-[10px] uppercase font-bold text-slate-400 block">Accuracy</span>
-                  <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                  <span className="text-2xl font-black text-violet-600 dark:text-violet-400">
                     {((modelData.metrics?.accuracy || 0) * 100).toFixed(1)}%
                   </span>
                 </div>
@@ -288,11 +288,74 @@ export default function ModelDetailView() {
                   <span className="text-2xl font-black">{modelData.metrics?.recall || 0}</span>
                 </div>
               </>
-            ) : (
+            ) : modelData.problem_type === 'forecasting' ? (
+              <>
+                <div className="p-4 rounded-2xl bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 text-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">MAPE Error</span>
+                  <span className="text-2xl font-black text-orange-600 dark:text-orange-400">
+                    {modelData.metrics?.mape != null ? `${modelData.metrics.mape.toFixed(1)}%` : '—'}
+                  </span>
+                </div>
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">RMSE</span>
+                  <span className="text-2xl font-black">{modelData.metrics?.rmse ? modelData.metrics.rmse.toFixed(2) : '—'}</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">MAE</span>
+                  <span className="text-2xl font-black">{modelData.metrics?.mae ? modelData.metrics.mae.toFixed(2) : '—'}</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Horizon</span>
+                  <span className="text-2xl font-black">{modelData.forecast_horizon || 12} periods</span>
+                </div>
+              </>
+            ) : (modelData.problem_type === 'segmentation' || modelData.problem_type === 'clustering') ? (
               <>
                 <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-center">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">R² Score</span>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Silhouette Score</span>
                   <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                    {modelData.metrics?.silhouette_score ?? 'N/A'}
+                  </span>
+                </div>
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Clusters</span>
+                  <span className="text-2xl font-black">{modelData.metrics?.num_clusters || 0}</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Samples</span>
+                  <span className="text-2xl font-black">{modelData.metrics?.total_samples || 0}</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Training Time</span>
+                  <span className="text-2xl font-black">{modelData.training_time_seconds || 0}s</span>
+                </div>
+              </>
+            ) : modelData.problem_type === 'anomaly_detection' ? (
+              <>
+                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Anomalies Detected</span>
+                  <span className="text-2xl font-black text-rose-600 dark:text-rose-400">
+                    {modelData.metrics?.anomaly_count ?? 0}
+                  </span>
+                </div>
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Anomaly Rate</span>
+                  <span className="text-2xl font-black">{modelData.metrics?.anomaly_percentage ?? 0}%</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Inliers (Normal)</span>
+                  <span className="text-2xl font-black">{modelData.metrics?.inlier_count ?? 0}</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Evaluated</span>
+                  <span className="text-2xl font-black">{modelData.metrics?.total_samples ?? 0}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">R² Score</span>
+                  <span className="text-2xl font-black text-blue-600 dark:text-blue-400">
                     {modelData.metrics?.r2_score || 0}
                   </span>
                 </div>

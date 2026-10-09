@@ -971,11 +971,9 @@ export default function DashboardBuilderPage() {
           </button>
 
           <div className="flex items-center space-x-2 border-r border-slate-200 dark:border-slate-800 pr-3 mr-1">
-            <img
-              src="/logo-mark.png"
-              alt="Prajna Logo"
-              className="w-7 h-7 object-contain shrink-0 drop-shadow-xs"
-            />
+            <div className="w-6 h-6 rounded bg-gradient-prajna flex items-center justify-center text-xs font-black text-white">
+              P
+            </div>
             <span className="font-extrabold text-xs tracking-wider text-slate-900 dark:text-white hidden sm:inline">
               PRAJNA
             </span>

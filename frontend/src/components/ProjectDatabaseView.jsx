@@ -337,7 +337,16 @@ export default function ProjectDatabaseView() {
           <img
             src="/logo.png"
             alt="Company Logo"
-            className="h-16 w-auto object-contain max-w-[280px] drop-shadow-sm"
+            className="h-16 w-auto object-contain max-w-[280px] drop-shadow-sm rounded-lg"
+            onError={(e) => {
+              const fallbacks = ['/main.png', '/logo.jpg', '/main.jpg', '/logo-numentrix.png', '/logo-datanex.png'];
+              const current = e.currentTarget.getAttribute('data-err-idx') || 0;
+              const nextIdx = Number(current);
+              if (nextIdx < fallbacks.length) {
+                e.currentTarget.setAttribute('data-err-idx', nextIdx + 1);
+                e.currentTarget.src = fallbacks[nextIdx];
+              }
+            }}
           />
         </div>
         <h2 className="text-xl font-black tracking-tight text-slate-800 dark:text-slate-100">
@@ -390,6 +399,23 @@ export default function ProjectDatabaseView() {
               <span>Export CSV</span>
             </a>
           )}
+
+          <button
+            onClick={async () => {
+              if (!confirm(`Are you sure you want to delete session "${activeProject.name}" and all its data, charts, and models?`)) return;
+              try {
+                await api.deleteDataset(activeProject.id);
+                await refreshProjectTree(true);
+              } catch (err) {
+                alert(`Delete failed: ${err.message}`);
+              }
+            }}
+            className="px-3 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-950/20 hover:bg-rose-100 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer"
+            title="Delete this session and all its data"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Delete Session</span>
+          </button>
 
           <button
             onClick={() => selectProjectView(activeProject.id, 'visualizations')}

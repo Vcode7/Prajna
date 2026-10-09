@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import time
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, List, Optional
@@ -1634,54 +1635,61 @@ USER MESSAGE:
 "{prompt_text}"
 
 YOUR TASK:
-1. Determine whether the user's intent is a DATA QUESTION (needs a numeric, textual, or analytical answer) or a VISUALIZATION REQUEST (needs a chart/graph, or is modifying/refining an existing chart).
+1. Determine whether the user's intent is a DATA QUESTION (needs a numeric, textual, or analytical answer) or a VISUALIZATION REQUEST (needs one or more charts/graphs, or is modifying/refining an existing chart).
    - Examples of DATA QUESTIONS:
      * "What is the average downtime of each machine?"
      * "Which plant has the highest defect rate?"
      * "How many total units were produced in Q1?"
    - Examples of VISUALIZATION REQUESTS:
      * "Generate a chart showing monthly revenue."
-     * "Show me the relationship between production quantity and downtime."
-     * "Plot downtime by machine."
-     * "Change this to a horizontal bar chart."
-     * "Group it by plant."
+     * "Show me revenue by product and revenue by region." (Needs 2 charts!)
+     * "Give me 2 charts: downtime by machine and defects by plant."
+     * "Compare production quantity and downtime with charts."
+     * "Plot downtime by machine and show plant breakdown."
 
-2. Generate the precise SQLite SQL query to answer the question or produce the chart data.
-   - For multi-sheet workbooks, query specific sheet table names: {schema_info.get('table_names', ['dataset'])} (e.g. `manufacturing_production`).
-   - If tables share keys (e.g. `product_id`, `machine_id`), write standard SQLite JOIN syntax.
-   - Use standard SQLite functions: SUM(), AVG(), COUNT(), MIN(), MAX(), ROUND().
-   - Include GROUP BY, ORDER BY, and LIMIT (maximum 50 rows) where appropriate.
-   - DATE / TIME HANDLING RULE: Always treat the "current date" as the LATEST / MAXIMUM date or year present in the data (if there is a date or year column). Never assume 2023 or the real calendar date. For queries like "last month", "this month", "last year", "latest", anchor relative to `(SELECT MAX(<date_column>) FROM ...)` or `(SELECT MAX(<year_column>) FROM ...)`. Output must be calculated relative to the latest data (e.g., up to 2026).
-
-3. Select the best chart configuration if intent is "visualization".
-   - chart_type: "Bar" | "Horizontal Bar" | "Line" | "Area" | "Pie" | "Donut" | "Scatter" | "Stacked Bar" | "Stacked Area" | "Treemap" | "Metric"
+2. Multi-Chart & Multi-Query Option:
+   - If the user asks to generate MULTIPLE CHARTS, multiple analyses, comparative perspectives, or multi-dimensional breakdowns, YOU CAN AND SHOULD RETURN MULTIPLE CHARTS in the "charts" array!
+   - Each chart in "charts" must have its own distinct, valid SQLite "sql_query", "chart_type", "title", "x_variable", "y_variable", etc.
+   - If only a single chart is needed, return 1 chart in the "charts" array.
+   - For multi-sheet workbooks, query specific sheet table names: {schema_info.get('table_names', ['dataset'])}.
+   - If tables share keys, write standard SQLite JOIN syntax.
+   - Use standard SQLite functions: SUM(), AVG(), COUNT(), MIN(), MAX(), ROUND(). Include GROUP BY and ORDER BY. Limit each query to at most 50 rows.
+   - DATE / TIME HANDLING RULE: Always treat the "current date" as the LATEST / MAXIMUM date or year present in the data. Never assume 2023 or calendar today.
+   - Supported chart_type options: "Bar" | "Horizontal Bar" | "Line" | "Area" | "Pie" | "Donut" | "Scatter" | "Stacked Bar" | "Stacked Area" | "Treemap" | "Metric"
 
 Output ONLY a JSON object with this exact structure:
 {{
   "intent": "data_answer" | "visualization",
-  "sql_query": "SELECT ...",
-  "chart_type": "Bar",
-  "category": "single_variable" | "bi_variable" | "multi_variable",
-  "x_variable": "ColumnName",
-  "y_variable": "MetricColumn",
-  "group_variable": null,
-  "size_variable": null,
-  "aggregation": "sum" | "avg" | "count" | "none",
-  "title": "Descriptive Chart Title",
-  "explanation": "Brief description of the query and calculation."
+  "explanation": "Executive summary of the query or analyses.",
+  "charts": [
+    {{
+      "title": "Descriptive Chart Title",
+      "chart_type": "Bar",
+      "category": "single_variable" | "bi_variable" | "multi_variable",
+      "x_variable": "ColumnName",
+      "y_variable": "MetricColumn",
+      "group_variable": null,
+      "size_variable": null,
+      "aggregation": "sum" | "avg" | "count" | "none",
+      "sql_query": "SELECT ...",
+      "explanation": "Brief description of what this chart shows"
+    }}
+  ],
+  "sql_queries": ["SELECT ..."],
+  "sql_query": "SELECT ..."
 }}"""
 
         try:
             resp_stage1 = await groq_client.get_chat_completion(
                 messages=[
-                    {"role": "system", "content": "You are a professional SQL and data visualization engineer. Return valid JSON only."},
+                    {"role": "system", "content": "You are a professional SQL and data visualization engineer. You can return single or multiple charts as appropriate. Return valid JSON only."},
                     {"role": "user", "content": prompt_stage1}
                 ],
                 model=model or settings.default_model,
                 temperature=0.1,
-                max_tokens=500,
+                max_tokens=1500,
                 json_mode=True,
-                task_name="Visualization AI Intent & SQL"
+                task_name="Visualization AI Intent & Multi-SQL"
             )
 
             parsed_stage1 = {}
@@ -1699,134 +1707,204 @@ Output ONLY a JSON object with this exact structure:
                     }
 
             intent_raw = parsed_stage1.get("intent") or parsed_stage1.get("request_type") or "data_answer"
-            if "vis" in intent_raw.lower() or "chart" in intent_raw.lower():
+            if "vis" in intent_raw.lower() or "chart" in intent_raw.lower() or parsed_stage1.get("charts"):
                 intent = "visualization"
             else:
                 intent = "data_answer"
 
-            sql_query = (parsed_stage1.get("sql_query") or parsed_stage1.get("sql") or "SELECT * FROM dataset LIMIT 20;").strip()
+            # Parse charts list
+            raw_charts = parsed_stage1.get("charts")
+            if isinstance(raw_charts, list) and len(raw_charts) > 0:
+                charts_specs = [c for c in raw_charts if isinstance(c, dict)]
+            elif "chart_type" in parsed_stage1 or "x_variable" in parsed_stage1:
+                charts_specs = [parsed_stage1]
+            else:
+                charts_specs = []
+
+            # Extract sql queries
+            raw_queries = parsed_stage1.get("sql_queries")
+            if isinstance(raw_queries, list) and len(raw_queries) > 0:
+                all_sqls = [q.strip() for q in raw_queries if isinstance(q, str) and q.strip()]
+            else:
+                single_q = (parsed_stage1.get("sql_query") or parsed_stage1.get("sql") or "").strip()
+                all_sqls = [single_q] if single_q else []
+
             tables_used = parsed_stage1.get("tables_used", [])
 
-            # Execute SQL Query on SQLite
-            query_result = {"columns": [], "rows": [], "row_count": 0}
-            try:
-                query_result = project_service.query_project_data(dataset_id, sql_query, db, limit=50)
-            except Exception as sql_err:
-                logger.warning(f"SQL execution failed ({sql_err}). Falling back to primary dataset table.")
-                try:
-                    fallback_sql = "SELECT * FROM dataset LIMIT 30;"
-                    query_result = project_service.query_project_data(dataset_id, fallback_sql, db, limit=30)
-                    sql_query = fallback_sql
-                except Exception:
-                    pass
+            # ----------------------------------------------------------------
+            # BRANCH 1: VISUALIZATION(S) REQUEST
+            # ----------------------------------------------------------------
+            if intent == "visualization" and charts_specs:
+                executed_charts = []
+                executed_sqls = []
 
-            # Stage 2: Synthesis based on intent
-            if intent == "data_answer":
-                # Sample and compress rows for token efficiency
-                sample_rows = []
-                for r in query_result.get("rows", [])[:10]:
-                    sample_rows.append({k: (str(v)[:60] if isinstance(v, str) and len(v) > 60 else v) for k, v in r.items()})
+                # Process up to 4 charts per user prompt
+                for c_idx, c_spec in enumerate(charts_specs[:4]):
+                    c_sql = (c_spec.get("sql_query") or c_spec.get("sql") or (all_sqls[c_idx] if c_idx < len(all_sqls) else (all_sqls[0] if all_sqls else "SELECT * FROM dataset LIMIT 20;"))).strip()
+                    executed_sqls.append(c_sql)
 
-                # Synthesize clear executive natural-language answer
-                prompt_stage2 = f"""You are PRAJNA's Executive Data Analyst.
-The user asked: "{prompt_text}"
-The SQLite database executed the query and returned the following result:
-Columns: {query_result.get('columns')}
-Rows: {json.dumps(sample_rows)}
+                    c_query_result = {"columns": [], "rows": [], "row_count": 0}
+                    try:
+                        c_query_result = project_service.query_project_data(dataset_id, c_sql, db, limit=50)
+                    except Exception as sql_err:
+                        logger.warning(f"SQL execution failed for chart {c_idx+1} ({sql_err}). Falling back.")
+                        try:
+                            fallback_sql = "SELECT * FROM dataset LIMIT 30;"
+                            c_query_result = project_service.query_project_data(dataset_id, fallback_sql, db, limit=30)
+                            c_sql = fallback_sql
+                        except Exception:
+                            pass
 
-INSTRUCTIONS:
-1. Provide a direct, professional, natural-language answer to the user's question.
-2. Highlight specific values, leaders, minimums, maximums, or averages found in the data.
-3. CURRENCY & NUMBERING METRICS: ALWAYS use the Indian Rupee symbol (`₹`) instead of `$` for all financial amounts. ALWAYS use the Indian numbering system (Crores `Cr`, Lakhs `L` / `Lakh`, and Indian comma notation) instead of the Western Millions/Billions system.
-4. Offer 1-2 useful analytical insights or strategic takeaways based on the results.
-5. DO NOT show raw SQL queries or database code in your answer. Keep it executive and clean."""
+                    c_title = c_spec.get("title") or f"Analysis {c_idx+1}"
+                    c_chart_type = c_spec.get("chart_type", "Bar")
+                    c_x = c_spec.get("x_variable")
+                    c_y = c_spec.get("y_variable")
+                    c_group = c_spec.get("group_variable")
+                    c_size = c_spec.get("size_variable")
+                    c_cat = c_spec.get("category", "bi_variable")
+                    c_agg = c_spec.get("aggregation", "none")
+                    c_desc = c_spec.get("explanation", f"Visualizing {c_y or ''} by {c_x or ''}.")
 
-                synthesized_text = await groq_client.get_chat_completion(
-                    messages=[
-                        {"role": "system", "content": "You are a helpful executive data analyst."},
-                        {"role": "user", "content": prompt_stage2}
-                    ],
-                    model=model or settings.default_model,
-                    temperature=0.2,
-                    max_tokens=600,
-                    json_mode=False,
-                    task_name="Data Answer Synthesis"
-                )
+                    executed_charts.append({
+                        "id": f"chart_{c_idx+1}_{int(time.time()*1000)}",
+                        "title": c_title,
+                        "chart_type": c_chart_type,
+                        "category": c_cat,
+                        "x_variable": c_x,
+                        "y_variable": c_y,
+                        "group_variable": c_group,
+                        "size_variable": c_size,
+                        "aggregation": c_agg,
+                        "description": c_desc,
+                        "sql": c_sql,
+                        "calculations": c_spec.get("calculations", c_desc),
+                        "columns": c_query_result.get("columns", []),
+                        "rows": c_query_result.get("rows", []),
+                        "row_count": c_query_result.get("row_count", 0)
+                    })
 
-                return {
-                    "type": "data",
-                    "intent": "data_answer",
-                    "answer": synthesized_text,
-                    "insights": synthesized_text,
-                    "data_preview": {
-                        "columns": query_result.get("columns", []),
-                        "rows": query_result.get("rows", []),
-                        "row_count": query_result.get("row_count", 0)
-                    },
-                    "columns": query_result.get("columns", []),
-                    "rows": query_result.get("rows", []),
-                    "row_count": query_result.get("row_count", 0),
-                    "sql": sql_query,
-                    "tables_used": tables_used
-                }
+                # Stage 2: Synthesis for visualization(s)
+                chart_summaries = []
+                for idx, c in enumerate(executed_charts):
+                    sample_r = json.dumps(c.get("rows", [])[:4])
+                    chart_summaries.append(f"Chart {idx+1} '{c['title']}' ({c['chart_type']}): Rows sample: {sample_r}")
 
-            else:
-                # Visualization Request
-                chart_type = parsed_stage1.get("chart_type", "Bar")
-                title = parsed_stage1.get("title", f"Analysis: {prompt_text[:40]}")
-                x_var = parsed_stage1.get("x_variable")
-                y_var = parsed_stage1.get("y_variable")
-                group_var = parsed_stage1.get("group_variable")
-                size_var = parsed_stage1.get("size_variable")
-                cat = parsed_stage1.get("category", "bi_variable")
-                aggregation = parsed_stage1.get("aggregation", "none")
-                explanation = parsed_stage1.get("explanation", f"Visualizing {y_var or ''} by {x_var or ''}.")
+                prompt_vis_explanation = f"""The user asked: "{prompt_text}".
+Generated {len(executed_charts)} visualization(s):
+{chr(10).join(chart_summaries)}
 
-                # Generate brief analytical takeaway for the chart
-                prompt_vis_explanation = f"""The user requested a visualization: "{prompt_text}".
-Chart: {chart_type} titled '{title}'.
-Data Sample: {json.dumps(query_result.get('rows', [])[:10])}
-Write 1-2 concise sentences explaining what this chart reveals and the main insight. Always use the Indian Rupee symbol (₹) and Indian metrics (Lakh/Crore) for financial figures. Do not show SQL."""
+Write 2-3 concise, professional sentences providing executive insights across the generated chart(s) and highlighting the main business findings. Always use the Indian Rupee symbol (₹) and Indian numbering (Lakh/Crore) for financial figures. Do not show raw SQL."""
 
                 try:
                     explanation_text = await groq_client.get_chat_completion(
                         messages=[
-                            {"role": "system", "content": "You are a data visualization analyst."},
+                            {"role": "system", "content": "You are a professional executive data visualization analyst."},
                             {"role": "user", "content": prompt_vis_explanation}
                         ],
                         model=model or settings.default_model,
                         temperature=0.2,
-                        max_tokens=250,
+                        max_tokens=350,
                         json_mode=False,
-                        task_name="Visualization Chart Explanation"
+                        task_name="Visualization Multi-Chart Explanation"
                     )
                 except Exception:
-                    explanation_text = explanation
+                    explanation_text = parsed_stage1.get("explanation", f"Generated {len(executed_charts)} chart(s) to analyze your request.")
+
+                primary_chart = executed_charts[0] if executed_charts else None
+                combined_sql = ";\n\n".join(executed_sqls)
 
                 return {
                     "type": "visualization",
                     "intent": "visualization",
                     "answer": explanation_text,
+                    "response": explanation_text,
                     "insights": explanation_text,
-                    "sql": sql_query,
+                    "sql": combined_sql,
+                    "sql_queries": executed_sqls,
                     "tables_used": tables_used,
-                    "chart": {
-                        "title": title,
-                        "chart_type": chart_type,
-                        "category": cat,
-                        "x_variable": x_var,
-                        "y_variable": y_var,
-                        "group_variable": group_var,
-                        "size_variable": size_var,
-                        "aggregation": aggregation,
-                        "description": explanation_text,
-                        "sql": sql_query,
-                        "calculations": parsed_stage1.get("calculations", explanation),
-                        "columns": query_result.get("columns", []),
-                        "rows": query_result.get("rows", []),
-                        "row_count": query_result.get("row_count", 0)
+                    "chart": primary_chart,
+                    "charts": executed_charts,
+                    "data_preview": {
+                        "columns": primary_chart.get("columns", []) if primary_chart else [],
+                        "rows": primary_chart.get("rows", []) if primary_chart else [],
+                        "row_count": primary_chart.get("row_count", 0) if primary_chart else 0
                     }
                 }
+
+            # ----------------------------------------------------------------
+            # BRANCH 2: DATA QUESTION (Single or Multi-Query)
+            # ----------------------------------------------------------------
+            queries_to_run = all_sqls if all_sqls else ["SELECT * FROM dataset LIMIT 20;"]
+            all_query_results = []
+            executed_sqls = []
+
+            for q in queries_to_run:
+                q_clean = q.strip()
+                executed_sqls.append(q_clean)
+                try:
+                    res = project_service.query_project_data(dataset_id, q_clean, db, limit=50)
+                    all_query_results.append(res)
+                except Exception as err:
+                    logger.warning(f"Query '{q_clean}' failed: {err}")
+                    try:
+                        fallback_sql = "SELECT * FROM dataset LIMIT 30;"
+                        res = project_service.query_project_data(dataset_id, fallback_sql, db, limit=30)
+                        all_query_results.append(res)
+                    except Exception:
+                        all_query_results.append({"columns": [], "rows": [], "row_count": 0})
+
+            primary_result = all_query_results[0] if all_query_results else {"columns": [], "rows": [], "row_count": 0}
+
+            # Sample rows for token efficiency across all results
+            data_samples_str = []
+            for idx, qr in enumerate(all_query_results):
+                sample_rows = []
+                for r in qr.get("rows", [])[:8]:
+                    sample_rows.append({k: (str(v)[:60] if isinstance(v, str) and len(v) > 60 else v) for k, v in r.items()})
+                data_samples_str.append(f"Query {idx+1} ({executed_sqls[idx]}):\nColumns: {qr.get('columns')}\nRows: {json.dumps(sample_rows)}")
+
+            prompt_stage2 = f"""You are PRAJNA's Executive Data Analyst.
+The user asked: "{prompt_text}"
+The database executed {len(executed_sqls)} query/queries and returned:
+{chr(10).join(data_samples_str)}
+
+INSTRUCTIONS:
+1. Provide a direct, professional, natural-language answer addressing all parts of the user's question.
+2. Highlight specific values, leaders, minimums, maximums, or averages found in the data.
+3. CURRENCY & NUMBERING METRICS: ALWAYS use the Indian Rupee symbol (`₹`) instead of `$` for all financial amounts. ALWAYS use the Indian numbering system (Crores `Cr`, Lakhs `L` / `Lakh`, and Indian comma notation) instead of the Western Millions/Billions system.
+4. Offer 1-2 useful analytical insights or strategic takeaways based on the results.
+5. DO NOT show raw SQL queries or database code in your answer. Keep it executive and clean."""
+
+            synthesized_text = await groq_client.get_chat_completion(
+                messages=[
+                    {"role": "system", "content": "You are a helpful executive data analyst."},
+                    {"role": "user", "content": prompt_stage2}
+                ],
+                model=model or settings.default_model,
+                temperature=0.2,
+                max_tokens=650,
+                json_mode=False,
+                task_name="Data Answer Multi-Query Synthesis"
+            )
+
+            combined_sql = ";\n\n".join(executed_sqls)
+            return {
+                "type": "data",
+                "intent": "data_answer",
+                "answer": synthesized_text,
+                "insights": synthesized_text,
+                "data_preview": {
+                    "columns": primary_result.get("columns", []),
+                    "rows": primary_result.get("rows", []),
+                    "row_count": primary_result.get("row_count", 0)
+                },
+                "columns": primary_result.get("columns", []),
+                "rows": primary_result.get("rows", []),
+                "row_count": primary_result.get("row_count", 0),
+                "sql": combined_sql,
+                "sql_queries": executed_sqls,
+                "tables_used": tables_used
+            }
 
         except Exception as e:
             logger.error(f"Error in chat_with_data_and_visualization: {e}", exc_info=True)

@@ -19,6 +19,8 @@ class MLTrainRequest(BaseModel):
     model_name: str
     problem_type: str # classification, regression, clustering, time_series
     target_column: Optional[str] = None
+    date_column: Optional[str] = None
+    forecast_horizon: Optional[int] = 12
     feature_columns: List[str]
     ignored_columns: List[str] = Field(default_factory=list)
     algorithm: str

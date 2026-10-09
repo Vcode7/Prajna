@@ -23,12 +23,24 @@ class ProjectService:
     def __init__(self):
         self.llm_client = groq_client
 
-    def get_project_tree(self, db: Session) -> List[Dict[str, Any]]:
+    def get_project_tree(self, db: Session, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Returns full hierarchical project tree for sidebar navigation.
         Project -> Database info, Visualizations list, ML Models list (with deployment status).
+        Filters by user_id so each account maintains its own isolated data.
         """
-        projects = db.query(DatasetSession).order_by(DatasetSession.created_at.desc()).all()
+        if not user_id:
+            return []
+
+        query = db.query(DatasetSession)
+        if user_id == "usr_v":
+            # Master account 'v' sees all user v sessions and pre-auth sessions
+            query = query.filter((DatasetSession.user_id == "usr_v") | (DatasetSession.user_id == None))
+        else:
+            # Distinct user sees strictly their own dataset sessions
+            query = query.filter(DatasetSession.user_id == user_id)
+
+        projects = query.order_by(DatasetSession.created_at.desc()).all()
         tree = []
 
         for p in projects:
@@ -64,6 +76,7 @@ class ProjectService:
 
             tree.append({
                 "id": p.id,
+                "user_id": p.user_id,
                 "name": p.name,
                 "original_filename": p.original_filename,
                 "file_path": p.file_path,
@@ -85,9 +98,10 @@ class ProjectService:
 
         return tree
 
-    def create_empty_project(self, name: str, db: Session) -> DatasetSession:
-        """Creates a new empty project session without dataset."""
+    def create_empty_project(self, name: str, db: Session, user_id: Optional[str] = None) -> DatasetSession:
+        """Creates a new empty project session without dataset, assigned to user_id."""
         session = DatasetSession(
+            user_id=user_id or "usr_v",
             name=name,
             original_filename="",
             file_path="",

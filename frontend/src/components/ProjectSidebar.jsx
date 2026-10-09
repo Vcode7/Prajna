@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useChatStore } from '../store/chatStore';
 import { api } from '../api/client';
 import {
@@ -86,7 +86,16 @@ export default function ProjectSidebar({ onOpenSettings }) {
             <img
               src="/logo.png"
               alt="Company Logo"
-              className="h-6 w-auto object-contain max-w-[170px]"
+              className="h-7 w-auto object-contain max-w-[170px] rounded"
+              onError={(e) => {
+                const fallbacks = ['/main.png', '/logo.jpg', '/main.jpg', '/logo-numentrix.png', '/logo-datanex.png'];
+                const current = e.currentTarget.getAttribute('data-err-idx') || 0;
+                const nextIdx = Number(current);
+                if (nextIdx < fallbacks.length) {
+                  e.currentTarget.setAttribute('data-err-idx', nextIdx + 1);
+                  e.currentTarget.src = fallbacks[nextIdx];
+                }
+              }}
             />
           </div>
           <button
@@ -99,26 +108,33 @@ export default function ProjectSidebar({ onOpenSettings }) {
         </div>
 
         {/* PRAJNA Brand Header */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl p-3 border border-slate-200/90 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center space-x-2.5">
-            <img
-              src="/logo-mark.png"
-              alt="PRAJNA Logo"
-              className="w-8 h-8 object-contain shrink-0 drop-shadow-xs"
-            />
+        <Link
+          to="/"
+          className="block bg-white dark:bg-slate-900 rounded-xl p-3 border border-slate-200/90 dark:border-slate-800 shadow-sm hover:border-violet-500/60 hover:shadow-md transition-all group"
+          title="Return to PRAJNA Home"
+        >
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-prajna flex items-center justify-center font-black text-white text-xs shadow-xs">
+              P
+            </div>
             <div className="min-w-0">
-              <h1 className="font-extrabold text-sm tracking-wider text-slate-900 dark:text-white leading-none">
-                PRAJNA
-              </h1>
-              <span className="text-[9px] font-semibold text-sky-600 dark:text-sky-400 tracking-wider uppercase">
-                AI Platform
+              <div className="flex items-center space-x-1.5">
+                <h1 className="font-extrabold text-sm tracking-wider text-slate-900 dark:text-white leading-none">
+                  PRAJNA
+                </h1>
+                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-violet-100 dark:bg-violet-950 text-violet-600 dark:text-violet-400">
+                  2.0
+                </span>
+              </div>
+              <span className="text-[9px] font-semibold text-violet-600 dark:text-violet-400 tracking-wider uppercase">
+                Predictive AI
               </span>
             </div>
           </div>
           <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 leading-tight font-medium">
             Predictive Research &amp; Analytics for Judgement, Navigation &amp; Action
           </p>
-        </div>
+        </Link>
       </div>
 
       {/* ── 2. New Session Action Button ─────────────────────────── */}
@@ -235,26 +251,34 @@ export default function ProjectSidebar({ onOpenSettings }) {
                       )}
                     </div>
 
-                    {/* Hover Actions */}
+                    {/* Session Actions (Always visible for active, visible with subtle opacity for others) */}
                     {!isEditing && (
-                      <div className="hidden group-hover:flex items-center space-x-1 shrink-0 ml-1">
+                      <div className="flex items-center space-x-1 shrink-0 ml-1">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setEditingProjectId(proj.id);
                             setEditProjectName(proj.name);
                           }}
-                          className="p-1 text-slate-400 hover:text-violet-500 rounded"
-                          title="Rename Project"
+                          className={`p-1 rounded transition-colors ${
+                            isProjectActive
+                              ? 'text-violet-400 hover:text-violet-600 dark:hover:text-violet-300 hover:bg-violet-100/50 dark:hover:bg-violet-900/40'
+                              : 'opacity-40 group-hover:opacity-100 text-slate-400 hover:text-violet-500 hover:bg-slate-200/50 dark:hover:bg-slate-700/50'
+                          }`}
+                          title="Rename Session"
                         >
-                          <Edit2 className="w-3 h-3" />
+                          <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={(e) => handleDeleteProject(proj.id, e)}
-                          className="p-1 text-slate-400 hover:text-rose-500 rounded"
-                          title="Delete Project"
+                          className={`p-1 rounded transition-colors ${
+                            isProjectActive
+                              ? 'text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 hover:bg-rose-100/50 dark:hover:bg-rose-950/40'
+                              : 'opacity-40 group-hover:opacity-100 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+                          }`}
+                          title="Delete Session"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     )}

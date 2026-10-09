@@ -49,3 +49,82 @@ def test_train_classification_model(tmp_path):
     assert result["status"] == "completed"
     assert "accuracy" in result["metrics"]
     assert os.path.exists(result["model_artifact_path"])
+
+def test_technique_registry_categories():
+    categories = ["regression", "classification", "forecasting", "segmentation", "anomaly_detection"]
+    for cat in categories:
+        techniques = ml_service.get_techniques_for_problem(cat)
+        assert len(techniques) >= 3, f"Expected at least 3 models for {cat}"
+        assert all("name" in t and "id" in t for t in techniques)
+
+def test_train_regression_model(tmp_path):
+    csv_file = tmp_path / "test_reg.csv"
+    df = pd.DataFrame({
+        "sqft": [1000, 1500, 2000, 2500, 3000, 1200, 1800, 2200, 2800, 3200],
+        "bedrooms": [2, 3, 3, 4, 4, 2, 3, 3, 4, 5],
+        "price": [200000, 280000, 350000, 420000, 500000, 230000, 310000, 370000, 460000, 530000]
+    })
+    df.to_csv(csv_file, index=False)
+
+    result = training_engine.train_model(
+        experiment_id="exp_reg_1",
+        file_path=str(csv_file),
+        model_name="House Price Regressor",
+        problem_type="regression",
+        target_column="price",
+        feature_columns=["sqft", "bedrooms"],
+        algorithm="Linear Regression",
+        hyperparameters={},
+        train_config={"test_size": 0.2, "random_state": 42}
+    )
+    assert result["status"] == "completed"
+    assert "r2_score" in result["metrics"]
+    assert "mae" in result["metrics"]
+
+def test_train_segmentation_model(tmp_path):
+    csv_file = tmp_path / "test_seg.csv"
+    df = pd.DataFrame({
+        "annual_spend": [100, 150, 200, 5000, 5500, 6000, 20000, 22000, 25000, 300],
+        "visit_frequency": [1, 2, 1, 15, 18, 12, 45, 50, 42, 3]
+    })
+    df.to_csv(csv_file, index=False)
+
+    result = training_engine.train_model(
+        experiment_id="exp_seg_1",
+        file_path=str(csv_file),
+        model_name="Customer Segmentation",
+        problem_type="segmentation",
+        target_column=None,
+        feature_columns=["annual_spend", "visit_frequency"],
+        algorithm="K-Means Clustering",
+        hyperparameters={"n_clusters": 3},
+        train_config={"scaling": "standard"}
+    )
+    assert result["status"] == "completed"
+    assert "cluster_distribution" in result["metrics"]
+    assert "segment_profiles" in result["metrics"]
+    assert result["metrics"]["num_clusters"] == 3
+
+def test_train_anomaly_detection_model(tmp_path):
+    csv_file = tmp_path / "test_anom.csv"
+    df = pd.DataFrame({
+        "amount": [10, 12, 11, 15, 14, 13, 9, 12, 11, 5000],  # 5000 is an outlier
+        "duration": [5, 6, 5, 7, 6, 5, 4, 6, 5, 120]
+    })
+    df.to_csv(csv_file, index=False)
+
+    result = training_engine.train_model(
+        experiment_id="exp_anom_1",
+        file_path=str(csv_file),
+        model_name="Fraud Anomaly Detector",
+        problem_type="anomaly_detection",
+        target_column=None,
+        feature_columns=["amount", "duration"],
+        algorithm="Isolation Forest",
+        hyperparameters={"contamination": 0.1},
+        train_config={"scaling": "robust", "contamination": 0.1}
+    )
+    assert result["status"] == "completed"
+    assert "anomaly_count" in result["metrics"]
+    assert "top_anomalies" in result["metrics"]
+    assert result["metrics"]["anomaly_count"] >= 1

@@ -2,18 +2,22 @@ import os
 import io
 import re
 import json
+import uuid
 import logging
+from datetime import datetime
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Header, status
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
 from backend.database.session import get_db
 from backend.models.models import (
-    DatasetSession, SavedVisualization, MLExperiment, DeployedModel, PredictionLog, SavedDashboard
+    DatasetSession, SavedVisualization, MLExperiment, DeployedModel, PredictionLog, SavedDashboard, User
 )
 from backend.schemas.dashboards import (
     DashboardCreateRequest, DashboardUpdateRequest,
@@ -51,6 +55,89 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # ============================================================================
+# 0. AUTHENTICATION & MULTI-TENANT ISOLATION ENDPOINTS
+# ============================================================================
+
+class LoginRequest(BaseModel):
+    username_or_email: str
+    password: str
+
+class RegisterRequest(BaseModel):
+    name: Optional[str] = None
+    username: Optional[str] = None
+    email: str
+    password: str
+    company: Optional[str] = None
+    role: Optional[str] = None
+
+@router.post("/auth/login")
+def login_endpoint(req: LoginRequest, db: Session = Depends(get_db)):
+    """Authenticates user with username or email and password."""
+    ident = req.username_or_email.strip().lower()
+    user = db.query(User).filter(
+        (func.lower(User.username) == ident) | (func.lower(User.email) == ident)
+    ).first()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username/email or password.")
+
+    if user.password_hash != req.password:
+        raise HTTPException(status_code=401, detail="Invalid username/email or password.")
+
+    token = f"prajna_token_{user.id}_{int(datetime.utcnow().timestamp())}"
+    return {
+        "user": user.to_dict(),
+        "token": token
+    }
+
+@router.post("/auth/register")
+def register_endpoint(req: RegisterRequest, db: Session = Depends(get_db)):
+    """Registers a new distinct user account with isolated dataset and dashboard storage."""
+    email = req.email.strip().lower()
+    raw_user = req.username or email.split("@")[0]
+    username = raw_user.strip().lower()
+
+    if len(req.password) < 4:
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters.")
+
+    existing = db.query(User).filter(
+        (func.lower(User.email) == email) | (func.lower(User.username) == username)
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="An account with this email or username already exists.")
+
+    new_id = f"usr_{uuid.uuid4().hex[:12]}"
+    new_user = User(
+        id=new_id,
+        username=username,
+        email=email,
+        password_hash=req.password,
+        name=req.name or username.capitalize(),
+        company=req.company or "Enterprise Corp",
+        role=req.role or "Enterprise Analyst",
+        plan="Enterprise Pilot"
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    token = f"prajna_token_{new_user.id}_{int(datetime.utcnow().timestamp())}"
+    return {
+        "user": new_user.to_dict(),
+        "token": token
+    }
+
+@router.get("/auth/me")
+def get_me_endpoint(db: Session = Depends(get_db), x_user_id: Optional[str] = Header(None)):
+    """Returns profile for currently authenticated user."""
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    user = db.query(User).filter(User.id == x_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return user.to_dict()
+
+# ============================================================================
 # 1. DATASETS ENDPOINTS
 # ============================================================================
 
@@ -61,7 +148,8 @@ async def upload_dataset(
     name: Optional[str] = Form(None),
     project_id: Optional[str] = Form(None),
     sheet_name: Optional[str] = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    x_user_id: Optional[str] = Header(None)
 ):
     """
     Uploads single or multiple CSV/Excel datasets. When multiple files are uploaded,
@@ -156,6 +244,7 @@ async def upload_dataset(
                 db.query(SavedVisualization).filter(SavedVisualization.dataset_id == session_rec.id).delete()
             else:
                 session_rec = DatasetSession(
+                    user_id=x_user_id or "usr_v",
                     name=dataset_name,
                     original_filename=", ".join(all_filenames),
                     file_path="",
@@ -228,6 +317,7 @@ async def upload_dataset(
             db.query(SavedVisualization).filter(SavedVisualization.dataset_id == session_rec.id).delete()
         else:
             session_rec = DatasetSession(
+                user_id=x_user_id or "usr_v",
                 name=dataset_name,
                 original_filename=single_file.filename,
                 file_path="",
@@ -265,9 +355,16 @@ async def upload_dataset(
         raise HTTPException(status_code=500, detail=f"Failed to process CSV dataset: {str(e)}")
 
 @router.get("/datasets", response_model=List[DatasetResponse])
-def list_datasets(db: Session = Depends(get_db)):
-    """Lists all available dataset sessions."""
-    datasets = db.query(DatasetSession).order_by(DatasetSession.created_at.desc()).all()
+def list_datasets(db: Session = Depends(get_db), x_user_id: Optional[str] = Header(None)):
+    """Lists available dataset sessions filtered by authenticated user."""
+    if not x_user_id:
+        return []
+    query = db.query(DatasetSession)
+    if x_user_id == "usr_v":
+        query = query.filter((DatasetSession.user_id == "usr_v") | (DatasetSession.user_id == None))
+    else:
+        query = query.filter(DatasetSession.user_id == x_user_id)
+    datasets = query.order_by(DatasetSession.created_at.desc()).all()
     return [d.to_dict() for d in datasets]
 
 @router.get("/datasets/{id}", response_model=DatasetResponse)
@@ -887,14 +984,21 @@ def train_model_endpoint(req: MLTrainRequest, db: Session = Depends(get_db)):
             feature_columns=req.feature_columns,
             algorithm=req.algorithm,
             hyperparameters=req.hyperparameters,
-            train_config=req.train_config
+            train_config=req.train_config,
+            date_column=req.date_column,
+            forecast_horizon=req.forecast_horizon
         )
 
         experiment.status = "completed"
         experiment.metrics = results["metrics"]
-        experiment.feature_importances = results["feature_importances"]
-        experiment.model_artifact_path = results["model_artifact_path"]
-        experiment.training_time_seconds = results["training_time_seconds"]
+        experiment.feature_importances = results.get("feature_importances", [])
+        experiment.model_artifact_path = results.get("model_artifact_path", "")
+        experiment.training_time_seconds = results.get("training_time_seconds", 0.0)
+        if "forecast_data" in results:
+            experiment.forecast_data = results["forecast_data"]
+            experiment.training_data_range = results.get("training_data_range")
+            experiment.forecast_horizon = results.get("forecast_horizon") or req.forecast_horizon
+            experiment.date_column = results.get("date_column") or req.date_column
         db.commit()
         db.refresh(experiment)
         return experiment.to_dict()
@@ -918,14 +1022,14 @@ from backend.schemas.datasets import (
 )
 
 @router.get("/projects/tree")
-def get_project_tree_endpoint(db: Session = Depends(get_db)):
+def get_project_tree_endpoint(db: Session = Depends(get_db), x_user_id: Optional[str] = Header(None)):
     """Returns complete hierarchical tree of projects, database status, visualizations, and models."""
-    return project_service.get_project_tree(db)
+    return project_service.get_project_tree(db, user_id=x_user_id)
 
 @router.post("/projects")
-def create_project_endpoint(req: ProjectCreateRequest, db: Session = Depends(get_db)):
+def create_project_endpoint(req: ProjectCreateRequest, db: Session = Depends(get_db), x_user_id: Optional[str] = Header(None)):
     """Creates a new empty project session."""
-    session = project_service.create_empty_project(name=req.name, db=db)
+    session = project_service.create_empty_project(name=req.name, db=db, user_id=x_user_id)
     return session.to_dict()
 
 @router.put("/projects/{id}")
@@ -991,11 +1095,25 @@ async def project_data_chat_endpoint(id: str, req: ProjectChatRequest, db: Sessi
 
 
 @router.get("/ml/experiments")
-def list_experiments(dataset_id: Optional[str] = None, chart_id: Optional[str] = None, workflow_type: Optional[str] = None, db: Session = Depends(get_db)):
-    """Lists trained model experiments. Optionally filter by dataset_id, chart_id, or workflow_type."""
+def list_experiments(
+    dataset_id: Optional[str] = None,
+    chart_id: Optional[str] = None,
+    workflow_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+    x_user_id: Optional[str] = Header(None)
+):
+    """Lists trained model experiments. Scopes to user datasets unless explicitly queried by dataset_id."""
     q = db.query(MLExperiment)
     if dataset_id:
         q = q.filter(MLExperiment.dataset_id == dataset_id)
+    elif x_user_id:
+        if x_user_id == "usr_v":
+            q = q.join(DatasetSession).filter((DatasetSession.user_id == "usr_v") | (DatasetSession.user_id == None))
+        else:
+            q = q.join(DatasetSession).filter(DatasetSession.user_id == x_user_id)
+    else:
+        return []
+
     if chart_id:
         q = q.filter(MLExperiment.chart_id == chart_id)
     if workflow_type:
@@ -1399,9 +1517,16 @@ def deploy_model(req: DeployModelRequest, db: Session = Depends(get_db)):
     return deployment.to_dict()
 
 @router.get("/deployments")
-def list_deployments(db: Session = Depends(get_db)):
-    """Lists all deployed models."""
-    deps = db.query(DeployedModel).order_by(DeployedModel.created_at.desc()).all()
+def list_deployments(db: Session = Depends(get_db), x_user_id: Optional[str] = Header(None)):
+    """Lists all deployed models scoped to the authenticated user."""
+    if not x_user_id:
+        return []
+    q = db.query(DeployedModel).join(MLExperiment).join(DatasetSession)
+    if x_user_id == "usr_v":
+        q = q.filter((DatasetSession.user_id == "usr_v") | (DatasetSession.user_id == None))
+    else:
+        q = q.filter(DatasetSession.user_id == x_user_id)
+    deps = q.order_by(DeployedModel.created_at.desc()).all()
     return [d.to_dict() for d in deps]
 
 @router.get("/deployments/{id}")
@@ -1509,16 +1634,50 @@ async def generate_deployment_insights(id: str, req: InferenceInsightsRequest, d
 # ============================================================================
 
 @router.get("/dashboard/stats")
-def get_dashboard_stats(db: Session = Depends(get_db)):
-    """Returns platform summary metrics and recent history."""
-    datasets_count = db.query(DatasetSession).count()
-    vis_count = db.query(SavedVisualization).count()
-    trained_count = db.query(MLExperiment).filter(MLExperiment.status == "completed").count()
-    deployed_count = db.query(DeployedModel).filter(DeployedModel.status == "active").count()
+def get_dashboard_stats(db: Session = Depends(get_db), x_user_id: Optional[str] = Header(None)):
+    """Returns platform summary metrics and recent history scoped strictly to authenticated user."""
+    if not x_user_id:
+        return {
+            "stats": {
+                "total_datasets": 0,
+                "total_visualizations": 0,
+                "total_trained_models": 0,
+                "total_deployed_models": 0
+            },
+            "recent_sessions": [],
+            "recent_models": [],
+            "recent_deployments": []
+        }
 
-    recent_sessions = db.query(DatasetSession).order_by(DatasetSession.created_at.desc()).limit(5).all()
-    recent_models = db.query(MLExperiment).filter(MLExperiment.status == "completed").order_by(MLExperiment.created_at.desc()).limit(5).all()
-    recent_deployments = db.query(DeployedModel).order_by(DeployedModel.created_at.desc()).limit(5).all()
+    ds_q = db.query(DatasetSession)
+    if x_user_id == "usr_v":
+        ds_q = ds_q.filter((DatasetSession.user_id == "usr_v") | (DatasetSession.user_id == None))
+    else:
+        ds_q = ds_q.filter(DatasetSession.user_id == x_user_id)
+
+    datasets_count = ds_q.count()
+    user_sessions = ds_q.all()
+    user_dataset_ids = [s.id for s in user_sessions]
+
+    vis_count = db.query(SavedVisualization).filter(
+        SavedVisualization.dataset_id.in_(user_dataset_ids)
+    ).count() if user_dataset_ids else 0
+
+    trained_q = db.query(MLExperiment).filter(
+        MLExperiment.status == "completed",
+        MLExperiment.dataset_id.in_(user_dataset_ids)
+    ) if user_dataset_ids else db.query(MLExperiment).filter(False)
+    trained_count = trained_q.count()
+
+    deployed_q = db.query(DeployedModel).join(MLExperiment).filter(
+        DeployedModel.status == "active",
+        MLExperiment.dataset_id.in_(user_dataset_ids)
+    ) if user_dataset_ids else db.query(DeployedModel).filter(False)
+    deployed_count = deployed_q.count()
+
+    recent_sessions = ds_q.order_by(DatasetSession.created_at.desc()).limit(5).all()
+    recent_models = trained_q.order_by(MLExperiment.created_at.desc()).limit(5).all()
+    recent_deployments = deployed_q.order_by(DeployedModel.created_at.desc()).limit(5).all()
 
     return {
         "stats": {
@@ -1537,7 +1696,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 # ============================================================================
 
 @router.post("/dashboards")
-def create_dashboard(req: DashboardCreateRequest, db: Session = Depends(get_db)):
+def create_dashboard(req: DashboardCreateRequest, db: Session = Depends(get_db), x_user_id: Optional[str] = Header(None)):
     """Creates a new dashboard with unique ID and default tab layout."""
     created = dashboard_service.create_dashboard(
         db=db,
@@ -1545,14 +1704,15 @@ def create_dashboard(req: DashboardCreateRequest, db: Session = Depends(get_db))
         title=req.title,
         description=req.description,
         tabs=req.tabs,
-        settings=req.settings
+        settings=req.settings,
+        user_id=x_user_id
     )
     return created
 
 @router.get("/dashboards")
-def list_dashboards(project_id: Optional[str] = None, db: Session = Depends(get_db)):
-    """Lists dashboards, optionally filtered by project_id."""
-    return dashboard_service.list_dashboards(db=db, project_id=project_id)
+def list_dashboards(project_id: Optional[str] = None, db: Session = Depends(get_db), x_user_id: Optional[str] = Header(None)):
+    """Lists dashboards, optionally filtered by project_id and user_id."""
+    return dashboard_service.list_dashboards(db=db, project_id=project_id, user_id=x_user_id)
 
 
 @router.post("/dashboards/generate-ai")

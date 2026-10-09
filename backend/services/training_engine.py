@@ -37,9 +37,16 @@ from sklearn.svm import SVR
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.neural_network import MLPRegressor
 
-# Clustering
+# Clustering & Dimension Reduction
 from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
 from sklearn.mixture import GaussianMixture
+from sklearn.decomposition import PCA
+
+# Anomaly Detection
+from sklearn.ensemble import IsolationForest
+from sklearn.svm import OneClassSVM
+from sklearn.neighbors import LocalOutlierFactor
+from sklearn.covariance import EllipticEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -128,19 +135,38 @@ class TrainingEngine:
             else:
                 return RandomForestRegressor(n_estimators=100, random_state=42)
 
-        elif problem_type == "clustering":
+        elif problem_type in ("segmentation", "clustering"):
             n_clusters = int(params.get("n_clusters", 3))
             if "kmeans" in norm_algo or "k_means" in norm_algo:
                 return KMeans(n_clusters=n_clusters, random_state=42)
             elif "dbscan" in norm_algo:
                 eps = float(params.get("eps", 0.5))
-                return DBSCAN(eps=eps)
+                min_samples = int(params.get("min_samples", 5))
+                return DBSCAN(eps=eps, min_samples=min_samples)
             elif "agglomerative" in norm_algo:
-                return AgglomerativeClustering(n_clusters=n_clusters)
+                linkage = str(params.get("linkage", "ward"))
+                return AgglomerativeClustering(n_clusters=n_clusters, linkage=linkage)
             elif "gaussian" in norm_algo or "gmm" in norm_algo:
                 return GaussianMixture(n_components=n_clusters, random_state=42)
             else:
                 return KMeans(n_clusters=n_clusters, random_state=42)
+
+        elif problem_type == "anomaly_detection":
+            contamination = float(params.get("contamination", 0.05))
+            if "isolation" in norm_algo or "forest" in norm_algo:
+                n_est = int(params.get("n_estimators", 100))
+                return IsolationForest(n_estimators=n_est, contamination=contamination, random_state=42)
+            elif "svm" in norm_algo or "one_class" in norm_algo:
+                nu = float(params.get("nu", contamination))
+                kernel = str(params.get("kernel", "rbf"))
+                return OneClassSVM(nu=nu, kernel=kernel, gamma="scale")
+            elif "lof" in norm_algo or "local_outlier" in norm_algo or "neighbor" in norm_algo:
+                n_neighbors = int(params.get("n_neighbors", 20))
+                return LocalOutlierFactor(n_neighbors=n_neighbors, contamination=contamination, novelty=True)
+            elif "elliptic" in norm_algo or "envelope" in norm_algo or "covariance" in norm_algo:
+                return EllipticEnvelope(contamination=contamination, random_state=42)
+            else:
+                return IsolationForest(n_estimators=100, contamination=contamination, random_state=42)
 
         raise ValueError(f"Unsupported algorithm '{algorithm}' for problem type '{problem_type}'")
 
@@ -196,7 +222,9 @@ class TrainingEngine:
         feature_columns: List[str],
         algorithm: str,
         hyperparameters: Dict[str, Any],
-        train_config: Dict[str, Any]
+        train_config: Dict[str, Any],
+        date_column: Optional[str] = None,
+        forecast_horizon: Optional[int] = 12
     ) -> Dict[str, Any]:
         """
         Executes end-to-end reproducible training, validation, and evaluation pipeline.
@@ -211,10 +239,45 @@ class TrainingEngine:
         if len(df) < 5:
             raise ValueError("Dataset has too few rows for ML training (minimum 5 required).")
 
+        # ----------------------------------------------------
+        # TIME-SERIES FORECASTING PIPELINE DELEGATION
+        # ----------------------------------------------------
+        if problem_type in ("forecasting", "time_series"):
+            from backend.services.forecasting_service import forecasting_service
+            date_col = date_column or train_config.get("date_column")
+            if not date_col or date_col not in df.columns:
+                for c in df.columns:
+                    if pd.api.types.is_datetime64_any_dtype(df[c]) or any(k in c.lower() for k in ['date', 'time', 'timestamp', 'year', 'month', 'day']):
+                        date_col = c
+                        break
+            if not date_col or date_col not in df.columns:
+                date_col = df.columns[0]
+
+            target_col = target_column or (feature_columns[0] if feature_columns else df.columns[-1])
+            technique_id = algorithm.lower().replace(" ", "_")
+            h_horizon = int(forecast_horizon or train_config.get("forecast_horizon", 12))
+
+            results = forecasting_service.train_forecast_model(
+                experiment_id=experiment_id,
+                df=df,
+                date_column=date_col,
+                target_column=target_col,
+                technique_id=technique_id,
+                hyperparameters=hyperparameters,
+                forecast_horizon=h_horizon
+            )
+            results["problem_type"] = "forecasting"
+            results["date_column"] = date_col
+            results["target_column"] = target_col
+            results["forecast_horizon"] = h_horizon
+            return results
+
         # 2. Filter feature columns
         valid_features = [f for f in feature_columns if f in df.columns]
-        if not valid_features:
+        if not valid_features and problem_type not in ("segmentation", "clustering", "anomaly_detection"):
             raise ValueError("None of the selected feature columns exist in the dataset.")
+        elif not valid_features:
+            valid_features = [c for c in df.columns if c != target_column][:10]
 
         scaling_type = train_config.get("scaling", "standard")
         test_size = float(train_config.get("test_size", 0.2))
@@ -374,9 +437,9 @@ class TrainingEngine:
             feature_importances = self._extract_feature_importances(full_pipeline, valid_features, num_cols, cat_cols, df)
 
         # ----------------------------------------------------
-        # CLUSTERING PIPELINE
+        # SEGMENTATION / CLUSTERING PIPELINE
         # ----------------------------------------------------
-        elif problem_type == "clustering":
+        elif problem_type in ("segmentation", "clustering"):
             full_pipeline = Pipeline([
                 ("preprocessor", preprocessor),
                 ("clusterer", estimator)
@@ -393,27 +456,173 @@ class TrainingEngine:
                 except Exception:
                     pass
 
-            cluster_counts = {f"Cluster {c}": int((cluster_labels == c).sum()) for c in unique_clusters}
+            total_samples = len(X)
+            cluster_counts = {}
+            for c in unique_clusters:
+                c_count = int((cluster_labels == c).sum())
+                c_pct = round((c_count / total_samples) * 100, 1) if total_samples > 0 else 0
+                cluster_counts[f"Cluster {c}"] = {
+                    "count": c_count,
+                    "percentage": c_pct
+                }
+
+            # Segment Profiles: mean of numeric features per cluster vs overall dataset
+            segment_profiles = []
+            for num_col in num_cols[:10]:
+                overall_mean = float(df[num_col].dropna().mean()) if not df[num_col].dropna().empty else 0.0
+                c_means = {}
+                for c in unique_clusters:
+                    mask = (cluster_labels == c)
+                    cluster_mean = float(df.loc[mask, num_col].dropna().mean()) if mask.sum() > 0 else 0.0
+                    diff_pct = round(((cluster_mean - overall_mean) / (overall_mean + 1e-9)) * 100, 1) if overall_mean != 0 else 0.0
+                    c_means[f"Cluster {c}"] = {
+                        "mean": round(cluster_mean, 2),
+                        "diff_pct": diff_pct
+                    }
+                segment_profiles.append({
+                    "feature": num_col,
+                    "overall_mean": round(overall_mean, 2),
+                    "cluster_means": c_means
+                })
+
+            # 2D PCA projection for cluster scatter chart
+            pca_2d_sample = []
+            try:
+                pca = PCA(n_components=2, random_state=42)
+                sub_n = min(150, len(X))
+                X_sub = X_transformed[:sub_n]
+                coords_2d = pca.fit_transform(X_sub)
+                for i in range(sub_n):
+                    pca_2d_sample.append({
+                        "x": round(float(coords_2d[i, 0]), 3),
+                        "y": round(float(coords_2d[i, 1]), 3),
+                        "cluster": int(cluster_labels[i])
+                    })
+            except Exception as e:
+                logger.debug(f"Could not compute 2D PCA coordinates: {e}")
 
             metrics = {
                 "silhouette_score": round(sil_score, 4) if sil_score is not None else None,
                 "num_clusters": len(unique_clusters),
                 "cluster_distribution": cluster_counts,
-                "total_samples": len(X)
+                "segment_profiles": segment_profiles,
+                "pca_2d_sample": pca_2d_sample,
+                "total_samples": total_samples
             }
 
             bundle = {
                 "pipeline": full_pipeline,
-                "problem_type": "clustering",
+                "problem_type": "segmentation",
                 "target_column": None,
                 "feature_columns": valid_features,
                 "algorithm": algorithm,
                 "hyperparameters": hyperparameters,
                 "train_config": train_config,
                 "metrics": metrics,
-                "trained_at": datetime.utcnow().isoformat()
+                "trained_at": datetime.now().isoformat()
             }
             joblib.dump(bundle, model_artifact_path)
+
+        # ----------------------------------------------------
+        # ANOMALY DETECTION PIPELINE
+        # ----------------------------------------------------
+        elif problem_type == "anomaly_detection":
+            full_pipeline = Pipeline([
+                ("preprocessor", preprocessor),
+                ("detector", estimator)
+            ])
+
+            X_transformed = full_pipeline.named_steps["preprocessor"].fit_transform(X)
+            estimator.fit(X_transformed)
+
+            preds = estimator.predict(X_transformed)  # -1 = anomaly, 1 = inlier
+            total_samples = len(X)
+            anomaly_count = int(np.sum(preds == -1))
+            inlier_count = int(np.sum(preds == 1))
+            anomaly_pct = round((anomaly_count / total_samples * 100), 2) if total_samples > 0 else 0.0
+
+            # Compute raw anomaly decision scores
+            raw_scores = None
+            if hasattr(estimator, "decision_function"):
+                try:
+                    raw_scores = estimator.decision_function(X_transformed)
+                except Exception:
+                    pass
+            elif hasattr(estimator, "score_samples"):
+                try:
+                    raw_scores = estimator.score_samples(X_transformed)
+                except Exception:
+                    pass
+
+            if raw_scores is not None:
+                s_min, s_max = float(np.min(raw_scores)), float(np.max(raw_scores))
+                if s_max > s_min:
+                    severity_scores = 1.0 - ((raw_scores - s_min) / (s_max - s_min))
+                else:
+                    severity_scores = np.where(preds == -1, 1.0, 0.0)
+            else:
+                severity_scores = np.where(preds == -1, 1.0, 0.0)
+
+            # Extract top anomalous rows
+            anomaly_indices = np.where(preds == -1)[0]
+            if len(anomaly_indices) > 0:
+                top_order = anomaly_indices[np.argsort(-severity_scores[anomaly_indices])][:20]
+            else:
+                top_order = np.argsort(-severity_scores)[:10]
+
+            top_anomalies = []
+            for idx in top_order:
+                row_vals = {col: sanitize_for_json(df.iloc[idx][col]) for col in valid_features[:6]}
+                top_anomalies.append({
+                    "row_index": int(idx) + 1,
+                    "anomaly_score": round(float(severity_scores[idx]), 4),
+                    "status": "Anomaly" if preds[idx] == -1 else "Borderline",
+                    "values": row_vals
+                })
+
+            metrics = {
+                "anomaly_count": anomaly_count,
+                "inlier_count": inlier_count,
+                "total_samples": total_samples,
+                "anomaly_percentage": anomaly_pct,
+                "contamination": float(train_config.get("contamination", hyperparameters.get("contamination", 0.05))),
+                "top_anomalies": top_anomalies
+            }
+
+            # Ground truth evaluation if target provided
+            if target_column and target_column in df.columns:
+                target_s = df[target_column].astype(str).str.lower()
+                y_true = target_s.isin(['true', 'yes', '1', 'fraud', 'anomaly', 'outlier', 'churn']).astype(int).values
+                y_pred_binary = (preds == -1).astype(int)
+
+                acc = float(accuracy_score(y_true, y_pred_binary))
+                prec = float(precision_score(y_true, y_pred_binary, zero_division=0))
+                rec = float(recall_score(y_true, y_pred_binary, zero_division=0))
+                f1 = float(f1_score(y_true, y_pred_binary, zero_division=0))
+                metrics.update({
+                    "ground_truth_evaluated": True,
+                    "accuracy": round(acc, 4),
+                    "precision": round(prec, 4),
+                    "recall": round(rec, 4),
+                    "f1_score": round(f1, 4),
+                    "confusion_matrix": confusion_matrix(y_true, y_pred_binary).tolist()
+                })
+
+            bundle = {
+                "pipeline": full_pipeline,
+                "problem_type": "anomaly_detection",
+                "target_column": target_column,
+                "feature_columns": valid_features,
+                "algorithm": algorithm,
+                "hyperparameters": hyperparameters,
+                "train_config": train_config,
+                "metrics": metrics,
+                "trained_at": datetime.now().isoformat()
+            }
+            joblib.dump(bundle, model_artifact_path)
+
+            if hasattr(estimator, "feature_importances_"):
+                feature_importances = self._extract_feature_importances(full_pipeline, valid_features, num_cols, cat_cols, df)
 
         duration = round(time.perf_counter() - start_time, 2)
 

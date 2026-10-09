@@ -28,10 +28,37 @@ def sanitize_for_json(obj):
         return [sanitize_for_json(v) for v in obj]
     return obj
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String(64), primary_key=True, default=generate_uuid)
+    username = Column(String(100), unique=True, nullable=False, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=True)
+    company = Column(String(255), nullable=True)
+    role = Column(String(100), default="Enterprise Administrator")
+    plan = Column(String(100), default="Enterprise Dedicated")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "name": self.name or self.username,
+            "company": self.company or "PRAJNA",
+            "role": self.role or "Enterprise Administrator",
+            "plan": self.plan or "Enterprise Dedicated",
+            "initials": (self.name or self.username)[:2].upper(),
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
+
 class DatasetSession(Base):
     __tablename__ = "dataset_sessions"
 
     id = Column(String(64), primary_key=True, default=generate_uuid)
+    user_id = Column(String(64), nullable=True, index=True, default=None)
     name = Column(String(255), nullable=False)
     original_filename = Column(String(255), nullable=False)
     file_path = Column(Text, nullable=False)
@@ -58,6 +85,7 @@ class DatasetSession(Base):
     def to_dict(self):
         return {
             "id": self.id,
+            "user_id": self.user_id,
             "name": self.name,
             "original_filename": self.original_filename,
             "file_path": self.file_path,
@@ -263,6 +291,7 @@ class SavedDashboard(Base):
     __tablename__ = "dashboards"
 
     id = Column(String(64), primary_key=True, default=generate_uuid)
+    user_id = Column(String(64), nullable=True, index=True, default=None)
     project_id = Column(String(64), ForeignKey("dataset_sessions.id", ondelete="CASCADE"), nullable=True)
     title = Column(String(255), nullable=False, default="Executive Dashboard")
     description = Column(Text, nullable=True)
@@ -277,6 +306,7 @@ class SavedDashboard(Base):
     def to_dict(self):
         return {
             "id": self.id,
+            "user_id": self.user_id,
             "project_id": self.project_id,
             "title": self.title,
             "description": self.description,
@@ -289,7 +319,7 @@ class SavedDashboard(Base):
 from sqlalchemy import text
 
 def init_app_db():
-    """Initializes all application tables and runs column migrations."""
+    """Initializes all application tables, runs column migrations, and seeds the master user."""
     Base.metadata.create_all(bind=engine)
     
     # Safe SQLite column migration for new fields
@@ -297,6 +327,8 @@ def init_app_db():
         for table, col, col_type in [
             ("dataset_sessions", "data_transformations", "JSON"),
             ("dataset_sessions", "saved_queries", "JSON"),
+            ("dataset_sessions", "user_id", "VARCHAR(64)"),
+            ("dashboards", "user_id", "VARCHAR(64)"),
             ("ml_experiments", "source_visualization_ids", "JSON"),
             ("ml_experiments", "workflow_type", "VARCHAR(50) DEFAULT 'general'"),
             ("ml_experiments", "chart_id", "VARCHAR(64)"),
@@ -312,5 +344,60 @@ def init_app_db():
                 conn.commit()
             except Exception:
                 pass # Column already exists
+
+    # Seed master account 'v' (email: v@g.com, username: v, password: 123456)
+    from backend.database.session import SessionLocal
+    db = SessionLocal()
+    try:
+        # Purge any dummy demo accounts (Elena Vance, Marcus Chen, Sarah Jenkins, etc.)
+        db.query(User).filter(
+            User.id.in_(["usr_cdo_01", "usr_ds_02", "usr_an_03"]) |
+            User.email.in_([
+                "elena.vance@enterprise-corp.com",
+                "marcus.chen@prajna.ai",
+                "sarah.j@supplychain-global.io"
+            ])
+        ).delete(synchronize_session=False)
+
+        user_v = db.query(User).filter((User.username == "v") | (User.email == "v@g.com")).first()
+        if not user_v:
+            user_v = User(
+                id="usr_v",
+                username="v",
+                email="v@g.com",
+                password_hash="123456",
+                name="v",
+                company="PRAJNA Analytics",
+                role="Enterprise Administrator",
+                plan="Enterprise Dedicated"
+            )
+            db.add(user_v)
+            db.commit()
+            db.refresh(user_v)
+        else:
+            # Ensure credentials match requirements
+            user_v.username = "v"
+            user_v.email = "v@g.com"
+            user_v.password_hash = "123456"
+            user_v.name = user_v.name or "v"
+            db.commit()
+
+        # Migrate all existing pre-authorization sessions and dashboards to user_v
+        db.query(DatasetSession).filter(
+            (DatasetSession.user_id == None) | (DatasetSession.user_id == "")
+        ).update({"user_id": user_v.id}, synchronize_session=False)
+
+        db.query(SavedDashboard).filter(
+            (SavedDashboard.user_id == None) | (SavedDashboard.user_id == "")
+        ).update({"user_id": user_v.id}, synchronize_session=False)
+
+        db.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger("models").error(f"Error seeding user v: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 
 

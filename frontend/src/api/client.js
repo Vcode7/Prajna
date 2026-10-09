@@ -10,10 +10,31 @@ const getApiBase = () => {
 
 export const API_BASE = getApiBase();
 
+export const getAuthHeaders = () => {
+  const headers = {};
+  try {
+    const rawUser = localStorage.getItem('prajna_auth_user');
+    if (rawUser) {
+      const user = JSON.parse(rawUser);
+      if (user && user.id) {
+        headers['x-user-id'] = user.id;
+      }
+    }
+    const token = localStorage.getItem('prajna_auth_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  } catch (e) {
+    // ignore
+  }
+  return headers;
+};
+
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
   const headers = {
     'Content-Type': 'application/json',
+    ...getAuthHeaders(),
     ...options.headers,
   };
 
@@ -79,6 +100,9 @@ export const api = {
     const response = await fetch(`${API_BASE}/datasets/upload`, {
       method: 'POST',
       body: formData,
+      headers: {
+        ...getAuthHeaders(),
+      },
     });
     if (!response.ok) {
       const err = await response.json().catch(() => ({ detail: 'Upload failed' }));
@@ -230,6 +254,9 @@ export const api = {
     const response = await fetch(`${API_BASE}/testing/${modelId}/predict`, {
       method: 'POST',
       body: formData,
+      headers: {
+        ...getAuthHeaders(),
+      },
     });
     if (!response.ok) {
       const err = await response.json().catch(() => ({ detail: 'Prediction failed' }));
@@ -243,6 +270,9 @@ export const api = {
     return fetch(`${API_BASE}/testing/${modelId}/predict`, {
       method: 'POST',
       body: formData,
+      headers: {
+        ...getAuthHeaders(),
+      },
     }).then(res => {
       if (!res.ok) throw new Error('Prediction failed');
       return res.json();
@@ -274,6 +304,19 @@ export const api = {
     request('/dashboards/generate-ai', { method: 'POST', body: JSON.stringify(params) }),
   askAICardModification: (params) =>
     request('/dashboards/modify-card-ai', { method: 'POST', body: JSON.stringify(params) }),
+
+  // ── Authentication ──────────────────────────────────────────
+  login: (usernameOrEmail, password) =>
+    request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username_or_email: usernameOrEmail, password }),
+    }),
+  register: (data) =>
+    request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getMe: () => request('/auth/me'),
 
   // ── Settings ───────────────────────────────────────────────
   getSettings: () => request('/settings'),

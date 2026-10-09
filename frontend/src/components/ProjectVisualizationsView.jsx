@@ -373,6 +373,10 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
         model: settings?.model
       });
 
+      const chartsList = (res.charts && Array.isArray(res.charts) && res.charts.length > 0)
+        ? res.charts
+        : (res.chart ? [res.chart] : []);
+
       const assistantMsg = {
         id: (Date.now() + 1).toString(),
         sender: 'assistant',
@@ -380,14 +384,16 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
         type: res.type,
         content: res.answer,
         insights: res.insights,
-        chart: res.chart,
+        chart: chartsList[0] || null,
+        charts: chartsList,
         data_preview: res.data_preview,
         sql: res.sql,
+        sql_queries: res.sql_queries || (res.sql ? [res.sql] : []),
         tables_used: res.tables_used
       };
 
-      if (res.chart) {
-        setCurrentActiveSpec(res.chart);
+      if (chartsList.length > 0) {
+        setCurrentActiveSpec(chartsList[0]);
       }
 
       setAiChatMessages(prev => [...prev, assistantMsg]);
@@ -1431,7 +1437,10 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
             {aiChatMessages.map((msg, idx) => {
               const isUser = msg.sender === 'user';
-              const isChart = msg.type === 'visualization' || (msg.chart && msg.chart.rows);
+              const chartsList = (msg.charts && Array.isArray(msg.charts) && msg.charts.length > 0)
+                ? msg.charts
+                : (msg.chart && msg.chart.rows ? [msg.chart] : []);
+              const isChart = msg.type === 'visualization' || chartsList.length > 0;
               const isSaved = msg.chart && savedChatChartIds[msg.id];
               const showSql = showSqlForMsg[msg.id];
               const showTable = showTableForMsg[msg.id];
@@ -1489,126 +1498,149 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
                         </div>
                       )}
 
-                      {/* Live Rendered Chart (for Visualization Responses) */}
-                      {isChart && msg.chart && (() => {
-                        const chartConfigObj = {
-                          chart_type: msg.chart.chart_type || 'Bar',
-                          title: msg.chart.title,
-                          x_axis: msg.chart.x_variable || msg.chart.columns?.[0],
-                          y_axis: (msg.chart.y_variable && msg.chart.y_variable !== msg.chart.x_variable)
-                            ? msg.chart.y_variable
-                            : (msg.chart.columns?.find(c => c !== (msg.chart.x_variable || msg.chart.columns?.[0])) || 'count')
-                        };
-                        const calculatedH = calculateChartHeight(
-                          chartConfigObj,
-                          msg.chart.rows || [],
-                          msg.chart.columns || [],
-                          msg.chart.chart_type || 'Bar'
-                        );
-                        const chatChartHeight = Math.max(380, Math.min(640, calculatedH));
-                        const refinementList = getRefinementOptions(msg.chart);
+                      {/* Live Rendered Chart(s) (Single or Multi-Chart) */}
+                      {isChart && chartsList.length > 0 && (() => {
+                        const primaryChart = chartsList[0];
+                        const refinementList = getRefinementOptions(primaryChart);
 
                         return (
-                          <div className="mt-4 space-y-3">
-
-                            {/* ── Chart Card ── */}
-                            <div className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 overflow-hidden">
-                              
-                              {/* Chart Top Bar */}
-                              <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800/80">
-                                <div className="flex items-center space-x-2 min-w-0">
-                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-violet-100 dark:bg-violet-950 text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-800 shrink-0">
-                                    {msg.chart.chart_type || 'Bar'}
-                                  </span>
-                                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-sm">
-                                    {msg.chart.title}
-                                  </h4>
+                          <div className="mt-4 space-y-4">
+                            {chartsList.length > 1 && (
+                              <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-violet-100/70 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800/70 text-violet-700 dark:text-violet-300">
+                                <div className="flex items-center space-x-2 text-[11px] font-bold">
+                                  <Sparkles className="w-3.5 h-3.5 text-violet-600" />
+                                  <span>Multi-Chart Analysis Generated</span>
                                 </div>
-
-                                {/* Chart Save & Dashboard Actions */}
-                                <div className="flex items-center space-x-1.5 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSaveChatChartToVisualizations(msg.chart, msg.id)}
-                                    disabled={!!isSaved}
-                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all shadow-xs ${
-                                      isSaved
-                                        ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 cursor-default'
-                                        : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-violet-500/20 active:scale-95'
-                                    }`}
-                                  >
-                                    {isSaved ? (
-                                      <>
-                                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                        <span>Saved to Visualizations</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Plus className="w-3.5 h-3.5" />
-                                        <span>Add to Visualization</span>
-                                      </>
-                                    )}
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => openAddToDashboardModal({
-                                      title: msg.chart.title,
-                                      chart_type: msg.chart.chart_type,
-                                      x_variable: msg.chart.x_variable,
-                                      y_variable: msg.chart.y_variable,
-                                      aggregation: msg.chart.aggregation,
-                                      sql: msg.chart.sql,
-                                      configuration: { sql: msg.chart.sql }
-                                    })}
-                                    className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center space-x-1.5 transition-colors"
-                                  >
-                                    <LayoutDashboard className="w-3.5 h-3.5 text-violet-500" />
-                                    <span>Add to Dashboard</span>
-                                  </button>
-
-                                  {isSaved && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setMainVisTab('visualizations');
-                                        setActiveCategory(msg.chart.category || 'all');
-                                      }}
-                                      className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-violet-600 dark:text-violet-400 hover:underline flex items-center space-x-1"
-                                    >
-                                      <span>View Tab →</span>
-                                    </button>
-                                  )}
-                                </div>
+                                <span className="text-[10px] font-bold bg-violet-200/80 dark:bg-violet-900/60 px-2 py-0.5 rounded-md">
+                                  {chartsList.length} Charts
+                                </span>
                               </div>
+                            )}
 
-                              {/* Live Chart Container — guaranteed ample height with zero overflow */}
-                              <div
-                                className="w-full relative overflow-hidden"
-                                style={{
-                                  height: `${chatChartHeight}px`,
-                                  minHeight: `${chatChartHeight}px`
-                                }}
-                              >
-                                {msg.chart.rows && msg.chart.rows.length > 0 ? (
-                                  <ChartTab
-                                    chartConfig={chartConfigObj}
-                                    columns={msg.chart.columns || []}
-                                    rows={msg.chart.rows}
+                            {chartsList.map((chartItem, cIdx) => {
+                              const chartConfigObj = {
+                                chart_type: chartItem.chart_type || 'Bar',
+                                title: chartItem.title,
+                                x_axis: chartItem.x_variable || chartItem.columns?.[0],
+                                y_axis: (chartItem.y_variable && chartItem.y_variable !== chartItem.x_variable)
+                                  ? chartItem.y_variable
+                                  : (chartItem.columns?.find(c => c !== (chartItem.x_variable || chartItem.columns?.[0])) || 'count')
+                              };
+                              const calculatedH = calculateChartHeight(
+                                chartConfigObj,
+                                chartItem.rows || [],
+                                chartItem.columns || [],
+                                chartItem.chart_type || 'Bar'
+                              );
+                              const chatChartHeight = Math.max(380, Math.min(640, calculatedH));
+                              const chartKey = `${msg.id}_${cIdx}`;
+                              const isItemSaved = savedChatChartIds[chartKey] || (cIdx === 0 && savedChatChartIds[msg.id]);
+
+                              return (
+                                <div key={cIdx} className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 overflow-hidden">
+                                  
+                                  {/* Chart Top Bar */}
+                                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800/80">
+                                    <div className="flex items-center space-x-2 min-w-0">
+                                      {chartsList.length > 1 && (
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-100 dark:bg-slate-800 text-slate-500 shrink-0">
+                                          #{cIdx + 1}
+                                        </span>
+                                      )}
+                                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-violet-100 dark:bg-violet-950 text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-800 shrink-0">
+                                        {chartItem.chart_type || 'Bar'}
+                                      </span>
+                                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-sm" title={chartItem.title}>
+                                        {chartItem.title}
+                                      </h4>
+                                    </div>
+
+                                    {/* Chart Save & Dashboard Actions */}
+                                    <div className="flex items-center space-x-1.5 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSaveChatChartToVisualizations(chartItem, chartKey)}
+                                        disabled={!!isItemSaved}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all shadow-xs ${
+                                          isItemSaved
+                                            ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 cursor-default'
+                                            : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-violet-500/20 active:scale-95'
+                                        }`}
+                                      >
+                                        {isItemSaved ? (
+                                          <>
+                                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                            <span>Saved to Visualizations</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Plus className="w-3.5 h-3.5" />
+                                            <span>Add to Visualization</span>
+                                          </>
+                                        )}
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => openAddToDashboardModal({
+                                          title: chartItem.title,
+                                          chart_type: chartItem.chart_type,
+                                          x_variable: chartItem.x_variable,
+                                          y_variable: chartItem.y_variable,
+                                          aggregation: chartItem.aggregation,
+                                          sql: chartItem.sql,
+                                          configuration: { sql: chartItem.sql }
+                                        })}
+                                        className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center space-x-1.5 transition-colors"
+                                      >
+                                        <LayoutDashboard className="w-3.5 h-3.5 text-violet-500" />
+                                        <span>Add to Dashboard</span>
+                                      </button>
+
+                                      {isItemSaved && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setMainVisTab('visualizations');
+                                            setActiveCategory(chartItem.category || 'all');
+                                          }}
+                                          className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-violet-600 dark:text-violet-400 hover:underline flex items-center space-x-1"
+                                        >
+                                          <span>View Tab →</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Live Chart Container */}
+                                  <div
+                                    className="w-full relative overflow-hidden"
                                     style={{
                                       height: `${chatChartHeight}px`,
                                       minHeight: `${chatChartHeight}px`
                                     }}
-                                  />
-                                ) : (
-                                  <div className="h-full flex items-center justify-center text-xs text-slate-400">
-                                    No rows returned for chart display.
+                                  >
+                                    {chartItem.rows && chartItem.rows.length > 0 ? (
+                                      <ChartTab
+                                        chartConfig={chartConfigObj}
+                                        columns={chartItem.columns || []}
+                                        rows={chartItem.rows}
+                                        style={{
+                                          height: `${chatChartHeight}px`,
+                                          minHeight: `${chatChartHeight}px`
+                                        }}
+                                      />
+                                    ) : (
+                                      <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                                        No rows returned for chart display.
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                            </div>
+                                </div>
+                              );
+                            })}
 
-                            {/* ── Follow-up & Refinement Suggestions — Clean separated card below chart ── */}
+                            {/* Refinements below charts */}
                             {refinementList.length > 0 && (
                               <div className="p-3.5 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/90 dark:border-slate-700/80 space-y-2">
                                 <div className="flex items-center space-x-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-300">
@@ -1620,7 +1652,7 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
                                     <button
                                       key={rIdx}
                                       type="button"
-                                      onClick={() => handleSendAiChatMessage(refineText, msg.chart)}
+                                      onClick={() => handleSendAiChatMessage(refineText, primaryChart)}
                                       disabled={aiChatLoading}
                                       className="text-xs px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 hover:bg-violet-50 dark:hover:bg-violet-950/70 hover:text-violet-600 dark:hover:text-violet-300 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-medium transition-all shadow-xs hover:border-violet-300 dark:hover:border-violet-700 active:scale-95 disabled:opacity-50"
                                     >
@@ -1630,7 +1662,6 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
                                 </div>
                               </div>
                             )}
-
                           </div>
                         );
                       })()}
@@ -1675,8 +1706,8 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
                         </div>
                       )}
 
-                      {/* SQL Query Debug Accordion (Hidden by default, can be toggled) */}
-                      {msg.sql && !isUser && (
+                      {/* SQL Query Debug Accordion (Single or Multiple Queries) */}
+                      {(msg.sql || (msg.sql_queries && msg.sql_queries.length > 0)) && !isUser && (
                         <div className="pt-1">
                           <button
                             type="button"
@@ -1684,29 +1715,64 @@ I have full visibility into **all sheets and tables** in your dataset. You can a
                             className="flex items-center space-x-1.5 text-[11px] font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                           >
                             <Terminal className="w-3 h-3 text-violet-500" />
-                            <span>{showSql ? 'Hide SQL Query' : 'View Executed SQL Query (Debug)'}</span>
+                            <span>
+                              {showSql
+                                ? 'Hide Executed SQL Queries'
+                                : (msg.sql_queries && msg.sql_queries.length > 1
+                                    ? `View Executed SQL Queries (${msg.sql_queries.length} Queries)`
+                                    : 'View Executed SQL Query (Debug)')
+                              }
+                            </span>
                             {showSql ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                           </button>
 
                           {showSql && (
-                            <div className="mt-2 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-                              <div className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800/90 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
-                                <span className="text-[10px] font-mono text-slate-500">Cross-Sheet SQLite Query</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(msg.sql);
-                                    alert('SQL copied!');
-                                  }}
-                                  className="text-[10px] text-violet-600 dark:text-violet-400 hover:underline flex items-center space-x-1"
-                                >
-                                  <Copy className="w-3 h-3" />
-                                  <span>Copy</span>
-                                </button>
-                              </div>
-                              <pre className="p-3 text-[11px] font-mono bg-slate-900 text-violet-300 overflow-x-auto leading-relaxed">
-                                <code>{msg.sql}</code>
-                              </pre>
+                            <div className="mt-2 space-y-2">
+                              {msg.sql_queries && msg.sql_queries.length > 1 ? (
+                                msg.sql_queries.map((qStr, qIdx) => (
+                                  <div key={qIdx} className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                                    <div className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800/90 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
+                                      <span className="text-[10px] font-mono text-violet-600 dark:text-violet-400 font-bold">
+                                        SQL Query #{qIdx + 1}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(qStr);
+                                          alert(`Query #${qIdx + 1} copied!`);
+                                        }}
+                                        className="text-[10px] text-violet-600 dark:text-violet-400 hover:underline flex items-center space-x-1"
+                                      >
+                                        <Copy className="w-3 h-3" />
+                                        <span>Copy</span>
+                                      </button>
+                                    </div>
+                                    <pre className="p-3 text-[11px] font-mono bg-slate-900 text-violet-300 overflow-x-auto leading-relaxed">
+                                      <code>{qStr}</code>
+                                    </pre>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                                  <div className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800/90 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] font-mono text-slate-500">Cross-Sheet SQLite Query</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(msg.sql);
+                                        alert('SQL copied!');
+                                      }}
+                                      className="text-[10px] text-violet-600 dark:text-violet-400 hover:underline flex items-center space-x-1"
+                                    >
+                                      <Copy className="w-3 h-3" />
+                                      <span>Copy</span>
+                                    </button>
+                                  </div>
+                                  <pre className="p-3 text-[11px] font-mono bg-slate-900 text-violet-300 overflow-x-auto leading-relaxed">
+                                    <code>{msg.sql}</code>
+                                  </pre>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

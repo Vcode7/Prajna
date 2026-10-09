@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Header
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
@@ -37,14 +37,17 @@ def get_db_schema():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/generate-sql")
-async def generate_sql_endpoint(req: GenerateSQLRequest, db: Session = Depends(get_history_db)):
+async def generate_sql_endpoint(req: GenerateSQLRequest, db: Session = Depends(get_history_db), x_user_id: Optional[str] = Header(None)):
     """Plans and runs query analytics, outputting single-query results or multi-query dashboards."""
     groq_client.reset_circuit_breaker()
     try:
         # 1. Fetch previous session messages to build memory history
-        history_entries = db.query(QueryHistory).filter(
-            QueryHistory.conversation_id == req.conversation_id
-        ).order_by(QueryHistory.timestamp.asc()).all()
+        q = db.query(QueryHistory).filter(QueryHistory.conversation_id == req.conversation_id)
+        if x_user_id and x_user_id != "usr_v":
+            q = q.filter(QueryHistory.user_id == x_user_id)
+        elif x_user_id == "usr_v":
+            q = q.filter((QueryHistory.user_id == "usr_v") | (QueryHistory.user_id == None))
+        history_entries = q.order_by(QueryHistory.timestamp.asc()).all()
         
         history_context_list = []
         for h in history_entries[-3:]:  # Keep context small for speed
@@ -83,6 +86,7 @@ async def generate_sql_endpoint(req: GenerateSQLRequest, db: Session = Depends(g
             rows_count = sum([w["data"]["row_count"] for w in result["widgets"]]) if is_multi else result.get("data", {}).get("row_count", 0)
         
         db_history = QueryHistory(
+            user_id=x_user_id or "usr_v",
             conversation_id=req.conversation_id,
             prompt=req.prompt,
             generated_sql=saved_sql,
@@ -119,7 +123,7 @@ async def generate_sql_endpoint(req: GenerateSQLRequest, db: Session = Depends(g
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/generate-sql-stream")
-async def generate_sql_stream_endpoint(req: GenerateSQLRequest, db: Session = Depends(get_history_db)):
+async def generate_sql_stream_endpoint(req: GenerateSQLRequest, db: Session = Depends(get_history_db), x_user_id: Optional[str] = Header(None)):
     """
     Streams query execution steps and widget progress sequentially using Server-Sent Events (SSE).
     """
@@ -128,9 +132,12 @@ async def generate_sql_stream_endpoint(req: GenerateSQLRequest, db: Session = De
     async def event_generator():
         try:
             # 1. Fetch conversation history
-            history_entries = db.query(QueryHistory).filter(
-                QueryHistory.conversation_id == req.conversation_id
-            ).order_by(QueryHistory.timestamp.asc()).all()
+            q = db.query(QueryHistory).filter(QueryHistory.conversation_id == req.conversation_id)
+            if x_user_id and x_user_id != "usr_v":
+                q = q.filter(QueryHistory.user_id == x_user_id)
+            elif x_user_id == "usr_v":
+                q = q.filter((QueryHistory.user_id == "usr_v") | (QueryHistory.user_id == None))
+            history_entries = q.order_by(QueryHistory.timestamp.asc()).all()
             
             history_context_list = []
             for h in history_entries[-3:]:
@@ -153,6 +160,7 @@ async def generate_sql_stream_endpoint(req: GenerateSQLRequest, db: Session = De
                 logger.info("Stream pipeline skipping analytics execution for 'response' mode query.")
 
                 db_history = QueryHistory(
+                    user_id=x_user_id or "usr_v",
                     conversation_id=req.conversation_id,
                     prompt=req.prompt,
                     generated_sql="[Conversational Response]",
@@ -260,6 +268,7 @@ async def generate_sql_stream_endpoint(req: GenerateSQLRequest, db: Session = De
             rows_count = sum([w["data"]["row_count"] for w in successful_widgets]) if is_multi else successful_widgets[0]["data"]["row_count"]
 
             db_history = QueryHistory(
+                user_id=x_user_id or "usr_v",
                 conversation_id=req.conversation_id,
                 prompt=req.prompt,
                 generated_sql=saved_sql,
@@ -482,10 +491,17 @@ async def widget_insights_endpoint(req: WidgetInsightsRequest):
 
 # History routes
 @router.get("/history")
-def get_history(db: Session = Depends(get_history_db)):
-    """Lists all past chat executions."""
+def get_history(db: Session = Depends(get_history_db), x_user_id: Optional[str] = Header(None)):
+    """Lists all past chat executions filtered by authenticated user."""
     try:
-        entries = db.query(QueryHistory).order_by(
+        if not x_user_id:
+            return []
+        q = db.query(QueryHistory)
+        if x_user_id == "usr_v":
+            q = q.filter((QueryHistory.user_id == "usr_v") | (QueryHistory.user_id == None))
+        else:
+            q = q.filter(QueryHistory.user_id == x_user_id)
+        entries = q.order_by(
             QueryHistory.is_pinned.desc(), 
             QueryHistory.timestamp.desc()
         ).all()
@@ -494,10 +510,11 @@ def get_history(db: Session = Depends(get_history_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/history")
-def save_history(req: HistorySaveRequest, db: Session = Depends(get_history_db)):
+def save_history(req: HistorySaveRequest, db: Session = Depends(get_history_db), x_user_id: Optional[str] = Header(None)):
     """Saves a query log record manually."""
     try:
         db_history = QueryHistory(
+            user_id=x_user_id or "usr_v",
             conversation_id=req.conversation_id,
             prompt=req.prompt,
             generated_sql=req.generated_sql,

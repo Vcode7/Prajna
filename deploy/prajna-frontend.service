@@ -1,0 +1,15 @@
+[Unit]
+Description=Prajna Frontend Service
+After=network.target prajna-backend.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/prajna/frontend
+ExecStart=/usr/bin/npm run preview -- --port 5173 --host 0.0.0.0
+Restart=always
+RestartSec=5
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+
+[Install]
+WantedBy=multi-user.target

@@ -72,12 +72,16 @@ class TestingService:
             except Exception:
                 pass
 
-        # Decode predicted class labels if classification
+        # Decode predicted class labels or labels based on problem type
         if problem_type == "classification" and target_encoder:
             try:
                 y_pred_decoded = target_encoder.inverse_transform(y_pred_raw).tolist()
             except Exception:
                 y_pred_decoded = [str(p) for p in y_pred_raw]
+        elif problem_type in ("segmentation", "clustering"):
+            y_pred_decoded = [f"Cluster {int(p)}" for p in y_pred_raw]
+        elif problem_type == "anomaly_detection":
+            y_pred_decoded = ["Anomaly" if p == -1 else "Normal" for p in y_pred_raw]
         else:
             y_pred_decoded = [float(p) if isinstance(p, (np.floating, float)) else p for p in y_pred_raw]
 
@@ -96,6 +100,23 @@ class TestingService:
                     "recall": round(rec, 4),
                     "f1_score": round(f1, 4),
                     "confusion_matrix": cm,
+                    "evaluated_samples": len(X_test)
+                }
+            elif problem_type == "anomaly_detection":
+                target_s = test_df[target_column].astype(str).str.lower()
+                y_true_binary = target_s.isin(['true', 'yes', '1', 'fraud', 'anomaly', 'outlier']).astype(int).values
+                y_pred_binary = (y_pred_raw == -1).astype(int)
+                acc = float(accuracy_score(y_true_binary, y_pred_binary))
+                prec = float(precision_score(y_true_binary, y_pred_binary, zero_division=0))
+                rec = float(recall_score(y_true_binary, y_pred_binary, zero_division=0))
+                f1 = float(f1_score(y_true_binary, y_pred_binary, zero_division=0))
+                evaluation_metrics = {
+                    "mode": "evaluation_mode",
+                    "accuracy": round(acc, 4),
+                    "precision": round(prec, 4),
+                    "recall": round(rec, 4),
+                    "f1_score": round(f1, 4),
+                    "confusion_matrix": confusion_matrix(y_true_binary, y_pred_binary).tolist(),
                     "evaluated_samples": len(X_test)
                 }
             elif problem_type == "regression":

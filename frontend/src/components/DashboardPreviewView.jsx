@@ -415,11 +415,9 @@ export default function DashboardPreviewView({
         {/* Sidebar Brand Header */}
         <div className={`p-4 border-b ${isDark ? 'border-slate-800/80' : 'border-slate-200/80'} flex items-center justify-between`}>
           <div className="flex items-center space-x-2.5 min-w-0">
-            <img
-              src="/logo-mark.png"
-              alt="Prajna Logo"
-              className="w-8 h-8 object-contain shrink-0 drop-shadow-xs"
-            />
+            <div className="w-7 h-7 rounded-lg bg-gradient-prajna flex items-center justify-center text-xs font-black text-white shrink-0">
+              P
+            </div>
             {sidebarOpen && (
               <div className="min-w-0">
                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">PRAJNA Analytics</span>

@@ -281,7 +281,12 @@ npm run dev
 
 If you want both the backend and frontend running continuously without keeping any PowerShell or Command Prompt terminal windows open:
 
-#### Option 1: 1-Click Silent Execution (Recommended)
+#### Option 1: Run as an Auto-Start Service (All-Time on Boot / Login)
+To ensure the backend and frontend servers are always running whenever your computer is turned on:
+- **Install Service**: Double-click `install_service.bat` (registers the application in Windows startup/task scheduler and immediately launches both servers in the background).
+- **Uninstall Service**: Double-click `uninstall_service.bat` (removes the startup service and terminates background processes).
+
+#### Option 2: 1-Click Silent Execution (Manual Launch)
 Double-click `start_silent.vbs` in Windows Explorer (or run via PowerShell):
 ```powershell
 .\start_background.ps1
@@ -294,7 +299,7 @@ To stop the background services:
 ```
 *(Or double-click `stop_silent.vbs`)*
 
-#### Option 2: Direct PowerShell One-Liner
+#### Option 3: Direct PowerShell One-Liner
 From the project root:
 ```powershell
 # Start backend in hidden detached process:

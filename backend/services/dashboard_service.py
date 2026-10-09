@@ -32,7 +32,8 @@ class DashboardService:
         title: Optional[str] = "Executive Dashboard",
         description: Optional[str] = None,
         tabs: Optional[List[Dict[str, Any]]] = None,
-        settings: Optional[Dict[str, Any]] = None
+        settings: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Creates a new dashboard with unique ID and default tab layout."""
         if not tabs:
@@ -49,6 +50,7 @@ class DashboardService:
             self.sync_dashboard_cards_to_visualizations(db, project_id, tabs, title or "Executive Dashboard")
 
         dashboard = SavedDashboard(
+            user_id=user_id or "usr_v",
             project_id=project_id,
             title=title or "Executive Dashboard",
             description=description,
@@ -170,11 +172,17 @@ class DashboardService:
 
         return modified
 
-    def list_dashboards(self, db: Session, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Lists dashboards optionally filtered by project."""
+    def list_dashboards(self, db: Session, project_id: Optional[str] = None, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Lists dashboards optionally filtered by project and user."""
         query = db.query(SavedDashboard)
         if project_id:
             query = query.filter(SavedDashboard.project_id == project_id)
+        if not user_id:
+            return []
+        if user_id == "usr_v":
+            query = query.filter((SavedDashboard.user_id == "usr_v") | (SavedDashboard.user_id == None))
+        else:
+            query = query.filter(SavedDashboard.user_id == user_id)
         dashboards = query.order_by(SavedDashboard.updated_at.desc()).all()
         return [d.to_dict() for d in dashboards]
 

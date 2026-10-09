@@ -270,3 +270,62 @@ async def test_stream_visualization_generation(sample_dataset):
         assert "Defects by Plant" in titles
         assert "Machine Output by Plant" in titles
 
+
+@pytest.mark.asyncio
+async def test_chat_with_data_and_visualization_multiple_charts(sample_dataset):
+    dataset, db = sample_dataset
+
+    mock_llm_stage1 = """{
+        "request_type": "visualization",
+        "charts": [
+            {
+                "chart_type": "Bar",
+                "category": "bi_variable",
+                "title": "Units by Machine",
+                "x_variable": "machine_id",
+                "y_variable": "units_produced",
+                "aggregation": "sum",
+                "sql": "SELECT machine_id, SUM(units_produced) as units_produced FROM dataset GROUP BY machine_id",
+                "tables_used": ["dataset"],
+                "explanation": "Units produced per machine."
+            },
+            {
+                "chart_type": "Bar",
+                "category": "bi_variable",
+                "title": "Defects by Plant",
+                "x_variable": "plant",
+                "y_variable": "defect_count",
+                "aggregation": "sum",
+                "sql": "SELECT plant, SUM(defect_count) as defect_count FROM dataset GROUP BY plant",
+                "tables_used": ["dataset"],
+                "explanation": "Defects broken down by plant."
+            }
+        ],
+        "explanation": "Generated multi-chart comparative analysis for units and defects."
+    }"""
+
+    mock_llm_stage2 = "Executive Summary: Machine M2 produced the most units, while Plant A recorded the highest defect count."
+
+    with patch.object(groq_client, "get_chat_completion", new_callable=AsyncMock) as mock_llm:
+        mock_llm.side_effect = [mock_llm_stage1, mock_llm_stage2]
+        res = await visualization_service.chat_with_data_and_visualization(
+            dataset_id=dataset.id,
+            user_prompt="Show 2 charts: units by machine and defects by plant",
+            db=db
+        )
+
+        assert res["type"] == "visualization"
+        assert "charts" in res
+        assert len(res["charts"]) == 2
+        assert res["charts"][0]["title"] == "Units by Machine"
+        assert res["charts"][0]["row_count"] > 0
+        assert res["charts"][1]["title"] == "Defects by Plant"
+        assert res["charts"][1]["row_count"] > 0
+        assert res["chart"]["title"] == "Units by Machine"
+        assert len(res["sql_queries"]) == 2
+        assert "SELECT machine_id" in res["sql_queries"][0]
+        assert "SELECT plant" in res["sql_queries"][1]
+        assert "SELECT machine_id" in res["sql"] and "SELECT plant" in res["sql"]
+        assert "Machine M2" in res["response"]
+
+

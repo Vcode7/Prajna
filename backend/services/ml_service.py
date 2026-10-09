@@ -166,7 +166,7 @@ TECHNIQUE_REGISTRY = {
             "cons": ["Requires scaled features"]
         }
     ],
-    "clustering": [
+    "segmentation": [
         {
             "id": "kmeans",
             "name": "K-Means Clustering",
@@ -203,19 +203,135 @@ TECHNIQUE_REGISTRY = {
             "pros": ["Soft cluster probabilities", "Flexible elliptical cluster shapes"],
             "cons": ["Sensitive to initialization"]
         }
+    ],
+    "anomaly_detection": [
+        {
+            "id": "isolation_forest",
+            "name": "Isolation Forest",
+            "category": "Tree Ensemble",
+            "description": "Isolates anomalies by randomly partitioning features. Outliers require fewer recursive splits to isolate.",
+            "default_hyperparameters": {"n_estimators": 100, "contamination": 0.05},
+            "pros": ["Top benchmark outlier detection", "Scales linearly with data", "Handles high dimensions"],
+            "cons": ["Assumes anomalies are rare and distinct"]
+        },
+        {
+            "id": "one_class_svm",
+            "name": "One-Class SVM",
+            "category": "Kernel Boundary",
+            "description": "Learns a tight non-linear decision boundary around normal data points using an RBF kernel.",
+            "default_hyperparameters": {"nu": 0.05, "kernel": "rbf"},
+            "pros": ["Effective on complex non-linear normal distributions"],
+            "cons": ["Requires feature scaling", "Sensitive to hyperparameter nu"]
+        },
+        {
+            "id": "local_outlier_factor",
+            "name": "Local Outlier Factor (LOF)",
+            "category": "Density-Based",
+            "description": "Measures local density deviation of an observation with respect to its nearest neighbors.",
+            "default_hyperparameters": {"n_neighbors": 20, "contamination": 0.05},
+            "pros": ["Detects local anomalies within variable density regions"],
+            "cons": ["Computationally intensive for large datasets"]
+        },
+        {
+            "id": "elliptic_envelope",
+            "name": "Elliptic Envelope",
+            "category": "Robust Covariance",
+            "description": "Fits a robust Gaussian covariance ellipse to clean data, flagging points outside the confidence ellipse.",
+            "default_hyperparameters": {"contamination": 0.05},
+            "pros": ["Fast and accurate for normally distributed features"],
+            "cons": ["Assumes elliptical/Gaussian distributed features"]
+        }
+    ],
+    "forecasting": [
+        {
+            "id": "random_forest_forecast",
+            "name": "Random Forest Forecaster",
+            "category": "Ensemble",
+            "description": "Tree ensemble with sliding-window lag features for robust multi-step time series prediction.",
+            "default_hyperparameters": {"n_estimators": 100, "max_depth": 10},
+            "pros": ["Handles non-linear trends & seasonality", "No strict stationarity requirement"],
+            "cons": ["Cannot extrapolate beyond historical value ranges"]
+        },
+        {
+            "id": "gradient_boosting_forecast",
+            "name": "Gradient Boosting Forecaster",
+            "category": "Boosting",
+            "description": "Sequential boosting model that iteratively fits trees to residual time-series errors.",
+            "default_hyperparameters": {"n_estimators": 100, "learning_rate": 0.1, "max_depth": 3},
+            "pros": ["Top-tier precision on complex sequential series"],
+            "cons": ["Sensitive to tuning learning rate"]
+        },
+        {
+            "id": "linear_trend",
+            "name": "Linear Trend Forecaster",
+            "category": "Linear Model",
+            "description": "Ordinary least squares trend model on chronological time index with calendar features.",
+            "default_hyperparameters": {"fit_intercept": True},
+            "pros": ["Extremely fast", "Ideal for steady growth/decline trends"],
+            "cons": ["Cannot model non-linear seasonal cycles"]
+        },
+        {
+            "id": "ridge_trend",
+            "name": "Ridge Regression (Lag Features)",
+            "category": "Regularized Linear",
+            "description": "L2-regularized linear model on autoregressive lags to stabilize multi-collinear time dependencies.",
+            "default_hyperparameters": {"alpha": 1.0},
+            "pros": ["Stable against collinear lag predictors"],
+            "cons": ["Assumes linear relationships"]
+        },
+        {
+            "id": "knn_forecast",
+            "name": "K-Nearest Neighbors Forecaster",
+            "category": "Instance-Based",
+            "description": "Forecasts values based on historical periods with the most similar temporal patterns.",
+            "default_hyperparameters": {"n_neighbors": 5},
+            "pros": ["Captures recurring cyclical patterns"],
+            "cons": ["Sensitive to feature scale"]
+        },
+        {
+            "id": "mlp_forecast",
+            "name": "Neural Network (MLP) Forecaster",
+            "category": "Deep Learning",
+            "description": "Multi-layer perceptron neural network capturing non-linear temporal dynamics.",
+            "default_hyperparameters": {"hidden_layer_sizes": [64, 32], "max_iter": 300},
+            "pros": ["Learns non-linear interactions"],
+            "cons": ["Requires feature scaling"]
+        },
+        {
+            "id": "lstm_forecast",
+            "name": "Long Short-Term Memory (LSTM)",
+            "category": "Recurrent Neural Network",
+            "description": "Deep sequential memory cells designed for long-range temporal dependencies.",
+            "default_hyperparameters": {"hidden_dim": 32, "num_layers": 1, "epochs": 50},
+            "pros": ["Captures long-range temporal dependencies"],
+            "cons": ["Requires larger sample size"]
+        },
+        {
+            "id": "moving_average",
+            "name": "Weighted Moving Average",
+            "category": "Smoothing",
+            "description": "Exponentially weighted moving average baseline for stable or noisy time series.",
+            "default_hyperparameters": {},
+            "pros": ["Simple and robust baseline"],
+            "cons": ["Lags behind sudden shifts"]
+        }
     ]
 }
+
+# Aliases for backward compatibility
+TECHNIQUE_REGISTRY["clustering"] = TECHNIQUE_REGISTRY["segmentation"]
+TECHNIQUE_REGISTRY["time_series"] = TECHNIQUE_REGISTRY["forecasting"]
 
 class MLService:
     def detect_problem_type(self, df: pd.DataFrame, target_column: Optional[str], col_meta: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Auto-detects whether the problem is Classification, Regression, Clustering, or Time Series.
+        Auto-detects whether the problem is Classification, Regression, Clustering/Segmentation, or Time Series/Forecasting.
         """
         if not target_column or target_column not in df.columns:
             return {
                 "problem_type": "clustering",
                 "target_column": None,
-                "reason": "No target column specified. Clustering will discover natural groupings in the data.",
+                "reason": "No target column specified. Segmentation / Clustering will discover natural groupings in the data.",
                 "classes": []
             }
 
@@ -276,10 +392,20 @@ class MLService:
             "reason": f"Target column '{target_column}' is a continuous numerical variable (Regression)."
         }
 
-
     def get_techniques_for_problem(self, problem_type: str) -> List[Dict[str, Any]]:
-        """Returns the algorithm library for the detected problem type."""
-        return TECHNIQUE_REGISTRY.get(problem_type.lower(), TECHNIQUE_REGISTRY["classification"])
+        """Returns the algorithm library for the specified problem type (regression, classification, forecasting, segmentation, anomaly_detection)."""
+        norm = (problem_type or "classification").lower().replace("-", "_").replace(" ", "_")
+        if norm in ("clustering", "segmentation", "cohorts"):
+            return TECHNIQUE_REGISTRY["segmentation"]
+        elif norm in ("time_series", "forecasting", "forecast"):
+            return TECHNIQUE_REGISTRY["forecasting"]
+        elif norm in ("anomaly_detection", "anomaly", "outlier", "outliers"):
+            return TECHNIQUE_REGISTRY["anomaly_detection"]
+        elif norm in ("regression", "regressor"):
+            return TECHNIQUE_REGISTRY["regression"]
+        elif norm in ("classification", "classifier"):
+            return TECHNIQUE_REGISTRY["classification"]
+        return TECHNIQUE_REGISTRY.get(norm, TECHNIQUE_REGISTRY["classification"])
 
     async def recommend_best_training_method(
         self,
@@ -517,6 +643,10 @@ INSTRUCTIONS:
         target_mode: str = "ai",
         feature_mode: str = "ai",
         feature_columns: Optional[List[str]] = None,
+        category_mode: str = "ai",
+        ml_category: Optional[str] = None,
+        algorithm_mode: str = "ai",
+        algorithm: Optional[str] = None,
         user_instructions: Optional[str] = None,
         model: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -525,7 +655,7 @@ INSTRUCTIONS:
         1. Selects the optimal target column (if in AI mode or not provided).
         2. Computes correlation matrix between target and eligible input fields.
         3. Automatically selects the most relevant input features based on correlation strength.
-        4. Detects the ML problem paradigm (classification vs regression).
+        4. Detects or respects the ML problem paradigm (regression, classification, forecasting, segmentation, anomaly_detection).
         5. Selects the best algorithm and hyperparameters.
         6. Formulates transparent engineering reasoning for all selections.
         """
@@ -533,11 +663,18 @@ INSTRUCTIONS:
         if not available_cols:
             raise ValueError("Dataset has no columns available.")
 
+        # Determine problem type first if manually chosen
+        req_category = (ml_category or "").lower().replace("-", "_").replace(" ", "_")
+        is_unsupervised = req_category in ("segmentation", "clustering", "anomaly_detection")
+
         # 1. Target Column Selection
         target = target_column if (target_column and target_column in available_cols) else None
         target_reason = ""
 
-        if not target or target_mode == "ai":
+        if is_unsupervised and not target_column:
+            target = None
+            target_reason = f"No target required for unsupervised {req_category.replace('_', ' ').title()}."
+        elif not target or target_mode == "ai":
             # Search for high-probability target columns
             target_keywords = [
                 'churn', 'target', 'label', 'class', 'status', 'fraud', 'default',
@@ -611,21 +748,34 @@ INSTRUCTIONS:
             feature_reason = f"Using {len(selected_features)} manually designated feature columns."
 
         # 4. Problem Type Detection
-        detection = self.detect_problem_type(df, target, col_meta)
-        problem_type = detection.get("problem_type", "classification")
+        if category_mode == "manual" and req_category:
+            problem_type = req_category
+        else:
+            detection = self.detect_problem_type(df, target, col_meta)
+            problem_type = detection.get("problem_type", "classification")
 
         # 5. Algorithm & Hyperparameter Selection
         tech_list = self.get_techniques_for_problem(problem_type)
 
-        if problem_type == "classification":
+        if algorithm_mode == "manual" and algorithm:
+            matched_algo = next((t for t in tech_list if t["name"].lower() == algorithm.lower() or t["id"].lower() == algorithm.lower()), None)
+            selected_algo = matched_algo or tech_list[0]
+            algo_reason = f"Configured user-selected algorithm: {selected_algo['name']}."
+        elif problem_type == "classification":
             selected_algo = next((t for t in tech_list if "Random Forest" in t["name"]), tech_list[0])
             algo_reason = f"Selected {selected_algo['name']} for balanced ensemble classification with built-in feature importance."
         elif problem_type == "regression":
             selected_algo = next((t for t in tech_list if "Random Forest Regressor" in t["name"]), tech_list[0])
             algo_reason = f"Selected {selected_algo['name']} to model non-linear numerical dependencies and resist overfitting."
+        elif problem_type in ("forecasting", "time_series"):
+            selected_algo = next((t for t in tech_list if "Random Forest" in t["name"]), tech_list[0])
+            algo_reason = f"Selected {selected_algo['name']} with lag window features for multi-step time series forecasting."
+        elif problem_type == "anomaly_detection":
+            selected_algo = next((t for t in tech_list if "Isolation Forest" in t["name"]), tech_list[0])
+            algo_reason = f"Selected {selected_algo['name']} for benchmark outlier isolation across feature space."
         else:
             selected_algo = tech_list[0]
-            algo_reason = f"Selected {selected_algo['name']} for unsupervised clustering."
+            algo_reason = f"Selected {selected_algo['name']} for unsupervised segmentation & cohort clustering."
 
         hyperparameters = selected_algo.get("default_hyperparameters", {})
 

@@ -15,21 +15,29 @@ if (Test-Path "$RootDir\venv\Scripts\python.exe") {
     $PythonExe = "$RootDir\.venv\Scripts\python.exe"
 }
 
-# 2. Start Backend (Hidden Window, completely detached)
-$backendProc = Start-Process -WindowStyle Hidden -FilePath $PythonExe `
-    -ArgumentList "-m uvicorn backend.main:app --host 0.0.0.0 --port 8000" `
-    -WorkingDirectory $RootDir `
-    -PassThru
+# 2. Start Backend (if not already running)
+$backendPort = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
+if (-not $backendPort) {
+    $backendProc = Start-Process -WindowStyle Hidden -FilePath $PythonExe `
+        -ArgumentList "-m uvicorn backend.main:app --host 0.0.0.0 --port 8000" `
+        -WorkingDirectory $RootDir `
+        -PassThru
+    Write-Host " -> Backend process launched (PID: $($backendProc.Id))" -ForegroundColor Green
+} else {
+    Write-Host " -> Backend is already running on port 8000." -ForegroundColor Yellow
+}
 
-Write-Host " -> Backend process launched (PID: $($backendProc.Id))" -ForegroundColor Green
-
-# 3. Start Frontend (Hidden Window, completely detached)
-$frontendProc = Start-Process -WindowStyle Hidden -FilePath "cmd.exe" `
-    -ArgumentList "/c npm run dev" `
-    -WorkingDirectory "$RootDir\frontend" `
-    -PassThru
-
-Write-Host " -> Frontend process launched (PID: $($frontendProc.Id))" -ForegroundColor Green
+# 3. Start Frontend (if not already running)
+$frontendPort = Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue
+if (-not $frontendPort) {
+    $frontendProc = Start-Process -WindowStyle Hidden -FilePath "cmd.exe" `
+        -ArgumentList "/c npm run dev" `
+        -WorkingDirectory "$RootDir\frontend" `
+        -PassThru
+    Write-Host " -> Frontend process launched (PID: $($frontendProc.Id))" -ForegroundColor Green
+} else {
+    Write-Host " -> Frontend is already running on port 5173." -ForegroundColor Yellow
+}
 
 # 4. Wait briefly and verify ports
 Start-Sleep -Seconds 3

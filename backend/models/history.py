@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, text
 from datetime import datetime
 from backend.database.session import Base, history_engine
 import json
@@ -7,6 +7,7 @@ class QueryHistory(Base):
     __tablename__ = "query_history"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(64), nullable=True, index=True, default=None)
     conversation_id = Column(String(50), nullable=False, index=True)
     prompt = Column(Text, nullable=False)
     generated_sql = Column(Text, nullable=False)
@@ -34,6 +35,7 @@ class QueryHistory(Base):
 
         return {
             "id": self.id,
+            "user_id": self.user_id,
             "conversation_id": self.conversation_id,
             "prompt": self.prompt,
             "generated_sql": self.generated_sql,
@@ -52,5 +54,16 @@ class QueryHistory(Base):
         }
 
 def init_history_db():
-    """Automatically creates the query history tables if they do not exist."""
+    """Automatically creates the query history tables if they do not exist and migrates columns."""
     Base.metadata.create_all(bind=history_engine)
+    with history_engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE query_history ADD COLUMN user_id VARCHAR(64)"))
+            conn.commit()
+        except Exception:
+            pass # Column already exists
+        try:
+            conn.execute(text("UPDATE query_history SET user_id = 'usr_v' WHERE user_id IS NULL OR user_id = ''"))
+            conn.commit()
+        except Exception:
+            pass
